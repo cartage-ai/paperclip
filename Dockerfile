@@ -51,6 +51,7 @@ COPY . .
 RUN pnpm --filter @paperclipai/ui build
 RUN pnpm --filter @paperclipai/plugin-sdk build
 RUN pnpm --filter @paperclipai/plugin-slack-agent build
+RUN test -f packages/plugins/examples/plugin-slack-agent/dist/manifest.js || (echo "ERROR: plugin-slack-agent build output missing" && exit 1)
 RUN pnpm --filter @paperclipai/server build
 RUN test -f server/dist/index.js || (echo "ERROR: server build output missing" && exit 1)
 
