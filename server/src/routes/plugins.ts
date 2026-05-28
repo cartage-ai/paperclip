@@ -2491,6 +2491,15 @@ export function pluginRoutes(
    * - 502 if the worker is unavailable or the RPC call fails
    */
   router.post("/plugins/:pluginId/webhooks/:endpointKey", async (req, res) => {
+    // URL verification challenge must be echoed before any plugin checks.
+    // Slack sends this when the operator first saves the Event Subscriptions URL —
+    // the plugin may not be installed yet at that point.
+    const bodyObj = req.body as Record<string, unknown> | undefined;
+    if (bodyObj?.type === "url_verification" && typeof bodyObj.challenge === "string") {
+      res.status(200).json({ challenge: bodyObj.challenge });
+      return;
+    }
+
     if (!webhookDeps) {
       res.status(501).json({ error: "Webhook ingestion is not enabled" });
       return;
@@ -2537,14 +2546,6 @@ export function pluginRoutes(
       res.status(404).json({
         error: `Webhook endpoint '${endpointKey}' is not declared by this plugin`,
       });
-      return;
-    }
-
-    // Step 5a: URL verification challenge (Slack Events API handshake) — echo immediately.
-    // Plugins cannot return custom HTTP response bodies, so this must be handled host-side.
-    const bodyObj = req.body as Record<string, unknown> | undefined;
-    if (bodyObj?.type === "url_verification" && typeof bodyObj.challenge === "string") {
-      res.status(200).json({ challenge: bodyObj.challenge });
       return;
     }
 
