@@ -103,6 +103,23 @@ describe.sequential("plugin webhook — Slack url_verification", () => {
     expect(workerCall).not.toHaveBeenCalled();
   });
 
+  it("echoes the challenge even when the plugin does not exist yet", async () => {
+    const workerCall = vi.fn();
+    const { app } = await createApp(workerCall);
+    // Plugin not found — simulates verifying the URL before installing the plugin
+    mockRegistry.getById.mockResolvedValue(null);
+    mockRegistry.getByKey.mockResolvedValue(null);
+
+    const challenge = "challenge-before-plugin-exists";
+    const res = await request(app)
+      .post(`/api/plugins/${PLUGIN_ID}/webhooks/slack-events`)
+      .send({ type: "url_verification", challenge, token: "tok" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ challenge });
+    expect(workerCall).not.toHaveBeenCalled();
+  });
+
   it("does not short-circuit for non-url_verification bodies (passes through to normal route path)", async () => {
     const { app } = await createApp();
 
