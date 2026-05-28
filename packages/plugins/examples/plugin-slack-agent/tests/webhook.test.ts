@@ -4,8 +4,8 @@ import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
 import type { PluginWebhookInput } from "@paperclipai/plugin-sdk";
-import type { StanPluginConfig } from "../src/constants.js";
-import { STATE_KEYS } from "../src/constants.js";
+import type { SlackAgentPluginConfig } from "../src/constants.js";
+import { stateKey } from "../src/constants.js";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -17,12 +17,17 @@ const BOT_USER_ID = "U_BOT";
 const SIGNING_SECRET = "test-slack-signing-secret";
 const BOT_TOKEN = "xoxb-test-token";
 
-const CONFIG: StanPluginConfig = {
-  slackBotTokenRef: "ref:bot-token",
-  slackSigningSecretRef: "ref:signing-secret",
-  stanAgentId: STAN_AGENT_ID,
-  slackBotUserId: BOT_USER_ID,
-  companyId: COMPANY_ID,
+const CONFIG: SlackAgentPluginConfig = {
+  agents: [
+    {
+      agentId: STAN_AGENT_ID,
+      slackBotTokenRef: "ref:bot-token",
+      slackSigningSecretRef: "ref:signing-secret",
+      slackBotUserId: BOT_USER_ID,
+      companyId: COMPANY_ID,
+      displayName: "Stan",
+    },
+  ],
 };
 
 function sign(rawBody: string, ts: number, secret: string): string {
@@ -90,8 +95,8 @@ beforeEach(async () => {
   // Override secrets to return test values
   harness.ctx.secrets = {
     resolve: async (ref: string) => {
-      if (ref === CONFIG.slackBotTokenRef) return BOT_TOKEN;
-      if (ref === CONFIG.slackSigningSecretRef) return SIGNING_SECRET;
+      if (ref === CONFIG.agents[0]!.slackBotTokenRef) return BOT_TOKEN;
+      if (ref === CONFIG.agents[0]!.slackSigningSecretRef) return SIGNING_SECRET;
       return `resolved:${ref}`;
     },
   };
@@ -123,7 +128,7 @@ describe("onWebhook — slack-events", () => {
       },
     };
 
-    await expect(plugin.definition.onWebhook!(input)).rejects.toThrow("Slack signature verification failed");
+    await expect(plugin.definition.onWebhook!(input)).rejects.toThrow("Slack signature verification failed — no registered agent matched");
   });
 
   it("returns without creating an issue for a URL verification challenge", async () => {
@@ -133,7 +138,7 @@ describe("onWebhook — slack-events", () => {
 
     await plugin.definition.onWebhook!(input);
 
-    const threadMap = harness.getState({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap });
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) });
     expect(threadMap == null).toBe(true);
   });
 
@@ -145,7 +150,7 @@ describe("onWebhook — slack-events", () => {
     await plugin.definition.onWebhook!(input);
     await plugin.definition.onWebhook!(input); // second delivery — same event_id
 
-    const threadMap = harness.getState({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap }) as Record<string, string> | null;
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
     const issueCount = Object.keys(threadMap ?? {}).length;
     expect(issueCount).toBe(1); // only one issue created despite two deliveries
   });
@@ -157,7 +162,7 @@ describe("onWebhook — slack-events", () => {
 
     await plugin.definition.onWebhook!(input);
 
-    const threadMap = harness.getState({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap });
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) });
     expect(threadMap == null).toBe(true);
   });
 
@@ -168,7 +173,7 @@ describe("onWebhook — slack-events", () => {
 
     await plugin.definition.onWebhook!(input);
 
-    const threadMap = harness.getState({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap }) as Record<string, string> | null;
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
     expect(threadMap).not.toBeNull();
     const issueIds = Object.values(threadMap!);
     expect(issueIds).toHaveLength(1);
@@ -180,7 +185,7 @@ describe("onWebhook — slack-events", () => {
     const firstRaw = JSON.stringify(firstBody);
     await plugin.definition.onWebhook!(makeWebhookInput(firstRaw, firstBody));
 
-    const threadMap = harness.getState({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap }) as Record<string, string> | null;
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
     const issueId = Object.values(threadMap!)[0]!;
 
     // Second message in the same thread
@@ -224,7 +229,7 @@ describe("onWebhook — slack-events", () => {
 
     await plugin.definition.onWebhook!(input);
 
-    const threadMap = harness.getState({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap }) as Record<string, string> | null;
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
     expect(threadMap).not.toBeNull();
     expect(Object.keys(threadMap!)).toHaveLength(1);
     expect(Object.keys(threadMap!)[0]).toMatch(/^dm:/);
