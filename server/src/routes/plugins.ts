@@ -2540,6 +2540,14 @@ export function pluginRoutes(
       return;
     }
 
+    // Step 5a: URL verification challenge (Slack Events API handshake) — echo immediately.
+    // Plugins cannot return custom HTTP response bodies, so this must be handled host-side.
+    const bodyObj = req.body as Record<string, unknown> | undefined;
+    if (bodyObj?.type === "url_verification" && typeof bodyObj.challenge === "string") {
+      res.status(200).json({ challenge: bodyObj.challenge });
+      return;
+    }
+
     // Step 5: Extract request data
     const requestId = randomUUID();
     const rawHeaders: Record<string, string> = {};
