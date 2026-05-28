@@ -1,6 +1,6 @@
 import type { PluginContext, PluginWebhookInput } from "@paperclipai/plugin-sdk";
-import type { StanPluginConfig, IssueChannelMap, ThreadIssueMap } from "./constants.js";
-import { STATE_KEYS } from "./constants.js";
+import type { AgentEntry, IssueChannelMap, ThreadIssueMap } from "./constants.js";
+import { stateKey } from "./constants.js";
 import { verifySlackSignature } from "./slack-verify.js";
 import { isEventSeen } from "./state-dedupe.js";
 
@@ -44,21 +44,22 @@ function firstMessageTitle(text: string): string {
   return firstLine.length > 120 ? firstLine.slice(0, 117) + "..." : firstLine || "Slack message";
 }
 
-async function readThreadMap(ctx: PluginContext): Promise<ThreadIssueMap> {
-  return ((await ctx.state.get({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap })) as ThreadIssueMap | null) ?? {};
+async function readThreadMap(ctx: PluginContext, agentId: string): Promise<ThreadIssueMap> {
+  return ((await ctx.state.get({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(agentId) })) as ThreadIssueMap | null) ?? {};
 }
 
-async function readChannelMap(ctx: PluginContext): Promise<IssueChannelMap> {
-  return ((await ctx.state.get({ scopeKind: "instance", stateKey: STATE_KEYS.issueChannelMap })) as IssueChannelMap | null) ?? {};
+async function readChannelMap(ctx: PluginContext, agentId: string): Promise<IssueChannelMap> {
+  return ((await ctx.state.get({ scopeKind: "instance", stateKey: stateKey.issueChannelMap(agentId) })) as IssueChannelMap | null) ?? {};
 }
 
 async function persistThreadMaps(
   ctx: PluginContext,
+  agentId: string,
   threadMap: ThreadIssueMap,
   channelMap: IssueChannelMap,
 ): Promise<void> {
-  await ctx.state.set({ scopeKind: "instance", stateKey: STATE_KEYS.threadIssueMap }, threadMap);
-  await ctx.state.set({ scopeKind: "instance", stateKey: STATE_KEYS.issueChannelMap }, channelMap);
+  await ctx.state.set({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(agentId) }, threadMap);
+  await ctx.state.set({ scopeKind: "instance", stateKey: stateKey.issueChannelMap(agentId) }, channelMap);
 }
 
 async function postAckReaction(
@@ -83,7 +84,7 @@ async function postAckReaction(
 
 async function handleNewConversation(
   ctx: PluginContext,
-  config: StanPluginConfig,
+  agent: AgentEntry,
   botToken: string,
   event: NonNullable<SlackEventBody["event"]>,
   mapKey: string,
@@ -91,18 +92,18 @@ async function handleNewConversation(
   threadTs: string,
 ): Promise<void> {
   const issue = await ctx.issues.create({
-    companyId: config.companyId,
+    companyId: agent.companyId,
     title: firstMessageTitle(event.text ?? ""),
     description: event.text ?? "",
-    assigneeAgentId: config.stanAgentId,
+    assigneeAgentId: agent.agentId,
   });
 
-  const [threadMap, channelMap] = await Promise.all([readThreadMap(ctx), readChannelMap(ctx)]);
+  const [threadMap, channelMap] = await Promise.all([readThreadMap(ctx, agent.agentId), readChannelMap(ctx, agent.agentId)]);
   threadMap[mapKey] = issue.id;
   channelMap[issue.id] = { channelId, threadTs };
-  await persistThreadMaps(ctx, threadMap, channelMap);
+  await persistThreadMaps(ctx, agent.agentId, threadMap, channelMap);
 
-  await ctx.issues.requestWakeup(issue.id, config.companyId, { reason: "Slack message received" });
+  await ctx.issues.requestWakeup(issue.id, agent.companyId, { reason: "Slack message received" });
   await postAckReaction(ctx, botToken, event.channel, event.ts);
 }
 
@@ -112,13 +113,13 @@ async function handleNewConversation(
 
 async function handleContinuation(
   ctx: PluginContext,
-  config: StanPluginConfig,
+  agent: AgentEntry,
   botToken: string,
   event: NonNullable<SlackEventBody["event"]>,
   issueId: string,
 ): Promise<void> {
-  await ctx.issues.createComment(issueId, event.text ?? "", config.companyId);
-  await ctx.issues.requestWakeup(issueId, config.companyId, { reason: "Slack thread reply" });
+  await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId);
+  await ctx.issues.requestWakeup(issueId, agent.companyId, { reason: "Slack thread reply" });
   await postAckReaction(ctx, botToken, event.channel, event.ts);
 }
 
@@ -127,9 +128,11 @@ async function handleContinuation(
 // ---------------------------------------------------------------------------
 
 /**
- * Processes a single Slack Events API delivery.
+ * Processes a single Slack Events API delivery for a specific agent.
  *
- * Precondition: input.endpointKey === WEBHOOK_KEYS.slackEvents.
+ * Precondition: caller has already verified the HMAC signature and identified `agent`
+ * as the owner of this event. `signingSecret` is passed only for the secondary
+ * verify inside url_verification handling (which is a no-op anyway).
  * Postcondition: side effects committed to Paperclip (issue created or comment added, wakeup queued).
  *
  * NOTE: URL-verification challenges cannot be echoed back through this webhook
@@ -142,7 +145,7 @@ async function handleContinuation(
 export async function handleSlackEvent(
   ctx: PluginContext,
   input: PluginWebhookInput,
-  config: StanPluginConfig,
+  agent: AgentEntry,
   signingSecret: string,
   botToken: string,
 ): Promise<void> {
@@ -151,13 +154,13 @@ export async function handleSlackEvent(
   // 1. URL verification challenge — log and return (can't echo challenge through plugin webhook)
   if (body?.type === "url_verification") {
     await ctx.activity.log({
-      companyId: config.companyId,
-      message: "Received Slack URL verification challenge — cannot echo from plugin webhook layer",
+      companyId: agent.companyId,
+      message: `Received Slack URL verification challenge for ${agent.displayName ?? agent.agentId} — cannot echo from plugin webhook layer`,
     });
     return;
   }
 
-  // 2. HMAC verification — reject forged requests immediately
+  // 2. HMAC verification — reject forged requests (secondary check; caller already verified for routing)
   const signatureValid = verifySlackSignature(input.rawBody, input.headers, signingSecret);
   if (!signatureValid) {
     throw new Error("Slack signature verification failed");
@@ -165,52 +168,52 @@ export async function handleSlackEvent(
 
   // 3. Dedupe on Slack event_id
   const eventId = body?.event_id;
-  if (eventId && await isEventSeen(ctx, eventId)) return;
+  if (eventId && await isEventSeen(ctx, agent.agentId, eventId)) return;
 
   const event = body?.event;
   if (!event) return;
 
-  // 4. Ignore messages from Stan's own bot user
-  if (event.user === config.slackBotUserId || event.bot_id) return;
+  // 4. Ignore messages from this agent's own bot user
+  if (event.user === agent.slackBotUserId || event.bot_id) return;
 
   const isDm = event.channel_type === "im" || event.type === "message.im";
 
   // 5. Route: DM — always create or continue
   if (isDm) {
-    const threadMap = await readThreadMap(ctx);
+    const threadMap = await readThreadMap(ctx, agent.agentId);
     const key = dmKey(event.channel);
     const existingIssueId = threadMap[key];
 
     if (existingIssueId) {
-      await handleContinuation(ctx, config, botToken, event, existingIssueId);
+      await handleContinuation(ctx, agent, botToken, event, existingIssueId);
     } else {
-      await handleNewConversation(ctx, config, botToken, event, key, event.channel, event.ts);
+      await handleNewConversation(ctx, agent, botToken, event, key, event.channel, event.ts);
     }
     return;
   }
 
   // 6. Route: app_mention — create new or continue thread
   if (event.type === "app_mention") {
-    const threadMap = await readThreadMap(ctx);
+    const threadMap = await readThreadMap(ctx, agent.agentId);
     const threadTs = event.thread_ts ?? event.ts;
     const key = channelKey(event.channel, threadTs);
     const existingIssueId = threadMap[key];
 
     if (existingIssueId) {
-      await handleContinuation(ctx, config, botToken, event, existingIssueId);
+      await handleContinuation(ctx, agent, botToken, event, existingIssueId);
     } else {
-      await handleNewConversation(ctx, config, botToken, event, key, event.channel, threadTs);
+      await handleNewConversation(ctx, agent, botToken, event, key, event.channel, threadTs);
     }
     return;
   }
 
   // 7. Route: untagged channel message in a tracked thread
   if (event.type === "message" && event.thread_ts) {
-    const threadMap = await readThreadMap(ctx);
+    const threadMap = await readThreadMap(ctx, agent.agentId);
     const key = channelKey(event.channel, event.thread_ts);
     const existingIssueId = threadMap[key];
     if (existingIssueId) {
-      await handleContinuation(ctx, config, botToken, event, existingIssueId);
+      await handleContinuation(ctx, agent, botToken, event, existingIssueId);
     }
   }
 }

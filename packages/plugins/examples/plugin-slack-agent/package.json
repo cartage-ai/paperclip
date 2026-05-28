@@ -1,7 +1,7 @@
 {
-  "name": "@paperclipai/plugin-slack-stan",
+  "name": "@paperclipai/plugin-slack-agent",
   "version": "0.1.0",
-  "description": "Stan MVP — reactive Slack-chat agent via Paperclip plugin",
+  "description": "Generic Slack-chat plugin — connect one or more Paperclip agents to Slack via @mention or DM",
   "type": "module",
   "private": true,
   "exports": { ".": "./src/index.ts" },
