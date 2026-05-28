@@ -17,8 +17,8 @@ function parseAgentEntry(raw: unknown, index: number): AgentEntry {
   if (
     typeof raw !== "object" || raw === null ||
     typeof (raw as Record<string, unknown>).agentId !== "string" ||
-    typeof (raw as Record<string, unknown>).slackBotTokenRef !== "string" ||
-    typeof (raw as Record<string, unknown>).slackSigningSecretRef !== "string" ||
+    typeof (raw as Record<string, unknown>).slackBotToken !== "string" ||
+    typeof (raw as Record<string, unknown>).slackSigningSecret !== "string" ||
     typeof (raw as Record<string, unknown>).slackBotUserId !== "string" ||
     typeof (raw as Record<string, unknown>).companyId !== "string"
   ) {
@@ -27,8 +27,8 @@ function parseAgentEntry(raw: unknown, index: number): AgentEntry {
   const entry = raw as Record<string, unknown>;
   return {
     agentId: entry.agentId as string,
-    slackBotTokenRef: entry.slackBotTokenRef as string,
-    slackSigningSecretRef: entry.slackSigningSecretRef as string,
+    slackBotToken: entry.slackBotToken as string,
+    slackSigningSecret: entry.slackSigningSecret as string,
     slackBotUserId: entry.slackBotUserId as string,
     companyId: entry.companyId as string,
     displayName: typeof entry.displayName === "string" ? entry.displayName : undefined,
@@ -42,6 +42,13 @@ function parseConfig(raw: Record<string, unknown>): SlackAgentPluginConfig {
   return { agents: raw.agents.map(parseAgentEntry) };
 }
 
+// Returns null when the plugin is installed but not yet configured (empty agents),
+// so worker setup succeeds and waits for onConfigChanged rather than failing install.
+function parseConfigOrNull(raw: Record<string, unknown>): SlackAgentPluginConfig | null {
+  if (!Array.isArray(raw.agents) || raw.agents.length === 0) return null;
+  return parseConfig(raw);
+}
+
 // ---------------------------------------------------------------------------
 // Event subscription — post agent comments back to Slack
 // ---------------------------------------------------------------------------
@@ -53,7 +60,7 @@ async function postAgentReplyToSlack(ctx: PluginContext, agent: AgentEntry, even
 
   if (!commentId || !issueId) return;
 
-  const botToken = await ctx.secrets.resolve(agent.slackBotTokenRef);
+  const botToken = agent.slackBotToken;
 
   const channelMap = ((await ctx.state.get({
     scopeKind: "instance",
@@ -100,12 +107,12 @@ const plugin: PaperclipPlugin = definePlugin({
   async setup(ctx: PluginContext) {
     currentContext = ctx;
     const raw = await ctx.config.get();
-    currentConfig = parseConfig(raw);
+    currentConfig = parseConfigOrNull(raw);
     registerEventHandlers(ctx);
   },
 
   async onConfigChanged(newConfig: Record<string, unknown>) {
-    currentConfig = parseConfig(newConfig);
+    currentConfig = parseConfigOrNull(newConfig);
   },
 
   async onWebhook(input: PluginWebhookInput) {
@@ -119,10 +126,8 @@ const plugin: PaperclipPlugin = definePlugin({
       throw new Error("plugin-slack-agent: context not ready");
     }
 
-    // Resolve all signing secrets, then HMAC-match to identify which agent owns this event
-    const signingSecrets = await Promise.all(
-      config.agents.map((a) => ctx.secrets.resolve(a.slackSigningSecretRef))
-    );
+    // HMAC-match each agent's signing secret to identify which agent owns this event
+    const signingSecrets = config.agents.map((a) => a.slackSigningSecret);
 
     const agentIndex = signingSecrets.findIndex(
       (secret) => verifySlackSignature(input.rawBody, input.headers, secret)
@@ -134,7 +139,7 @@ const plugin: PaperclipPlugin = definePlugin({
 
     const agent = config.agents[agentIndex]!;
     const signingSecret = signingSecrets[agentIndex]!;
-    const botToken = await ctx.secrets.resolve(agent.slackBotTokenRef);
+    const botToken = agent.slackBotToken;
 
     await handleSlackEvent(ctx, input, agent, signingSecret, botToken);
   },

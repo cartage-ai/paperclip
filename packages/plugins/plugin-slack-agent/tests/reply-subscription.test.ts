@@ -16,8 +16,8 @@ const CONFIG = {
   agents: [
     {
       agentId: STAN_AGENT_ID,
-      slackBotTokenRef: "ref:bot-token",
-      slackSigningSecretRef: "ref:signing-secret",
+      slackBotToken: BOT_TOKEN,
+      slackSigningSecret: "signing-secret",
       slackBotUserId: "U_BOT",
       companyId: COMPANY_ID,
       displayName: "Stan",
@@ -115,15 +115,6 @@ beforeEach(async () => {
     "issue-1": { channelId: "C_GENERAL", threadTs: "1700000001.000100" },
   };
   harness.ctx.state.set({ scopeKind: "instance", stateKey: stateKey.issueChannelMap(STAN_AGENT_ID) }, channelMap);
-
-  // Override secrets
-  harness.ctx.secrets = {
-    resolve: async (ref: string) => {
-      if (ref === CONFIG.agents[0]!.slackBotTokenRef) return BOT_TOKEN;
-      if (ref === CONFIG.agents[0]!.slackSigningSecretRef) return "signing-secret";
-      return `resolved:${ref}`;
-    },
-  };
 
   // Inject spy on http.fetch
   harness.ctx.http = { fetch: httpFetch };

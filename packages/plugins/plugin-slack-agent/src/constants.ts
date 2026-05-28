@@ -1,5 +1,5 @@
 export const PLUGIN_ID = "paperclip-slack-agent";
-export const PLUGIN_VERSION = "0.1.0";
+export const PLUGIN_VERSION = "0.1.5";
 
 export const WEBHOOK_KEYS = {
   slackEvents: "slack-events",
@@ -16,8 +16,8 @@ export const SEEN_EVENT_IDS_CAP = 1000;
 
 export type AgentEntry = {
   agentId: string;
-  slackBotTokenRef: string;
-  slackSigningSecretRef: string;
+  slackBotToken: string;
+  slackSigningSecret: string;
   slackBotUserId: string;
   companyId: string;
   displayName?: string;

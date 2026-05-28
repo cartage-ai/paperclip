@@ -185,9 +185,11 @@ One Slack app per agent. Do this in the Slack API console (api.slack.com/apps).
 2. **OAuth & Permissions → Bot Token Scopes:** add at minimum:
    - `app_mentions:read`
    - `chat:write`
+   - `channels:history` ← required to receive **thread replies** in public channels
    - `im:history`
    - `im:read`
    - `reactions:write` ← required for the ack reaction (👀) on new messages
+   - (`groups:history` if the bot works in private channels)
 3. **Install to Workspace.** Copy the **Bot User OAuth Token** (`xoxb-...`) → `STAN_BOT_TOKEN`.
 4. **Basic Information → App Credentials:** copy the **Signing Secret** → `STAN_SIGNING_SECRET`.
 5. **App Home → Show Tabs → Messages Tab:** enable "Allow users to send Slash commands and
@@ -200,46 +202,61 @@ One Slack app per agent. Do this in the Slack API console (api.slack.com/apps).
    should pass immediately once the plugin is installed (Part E).
 7. **Event Subscriptions → Subscribe to bot events:** add:
    - `app_mention`
+   - `message.channels` ← required for thread replies in public channels (without it, only
+     the first `@mention` is delivered; thread follow-ups are never received)
    - `message.im`
+   - (`message.groups` for private channels)
 8. **Save Changes → Reinstall app** (required after scope changes).
 9. Find the bot's **Member ID** in Slack (profile → three-dot menu → Copy member ID) →
    `STAN_BOT_USER_ID`.
 
 ---
 
-## Part E — Wire secrets and install the plugin
+## Part E — Install the plugin and configure tokens
 
-### Set secrets on the instance
+### Have the token values ready
 
-Secrets must be set on the Paperclip environment before the plugin loads them.
+The Slack tokens are passed **per-agent in the plugin config** (read via `ctx.config.get()`),
+not stored on the instance. Keep the values from Part D handy as shell vars:
 
 ```bash
-# On Railway (or however secrets are managed):
-STAN_BOT_TOKEN=xoxb-...
-STAN_SIGNING_SECRET=...
+STAN_BOT_TOKEN=xoxb-...       # Bot User OAuth Token
+STAN_SIGNING_SECRET=...       # App Signing Secret
 ```
 
-**Stan's secret names:** `STAN_BOT_TOKEN`, `STAN_SIGNING_SECRET`.
+These go straight into the config PUT below. (Note: the platform's `ctx.secrets` store is
+not yet enabled — company-scoped resolution is still a TODO — so tokens live in plugin
+config, the same way the Linear plugin carries its API key.)
 
 ### Install plugin-slack-agent
 
-The plugin lives at `packages/plugins/examples/plugin-slack-agent` in the repo. Build it
-and copy the built output to a stable path on the `/paperclip` volume, then install via the
-API.
+The plugin is published to npm as `@paperclipai/plugin-slack-agent`. Install it by package
+name — the host resolves it from the registry at runtime (no Docker bake, no volume copy).
 
 ```bash
-# Build the plugin (from repo root)
-npx pnpm --filter @paperclipai/plugin-slack-agent build
-
-# Install from local path (run on the instance, or provide the absolute container path)
+# Preferred: install from npm
 curl -X POST "$PAPERCLIP_URL/api/plugins/install" \
   -H "Authorization: Bearer $BOARD_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "packageName": "/paperclip/plugins/plugin-slack-agent",
-    "isLocalPath": true
+    "packageName": "@paperclipai/plugin-slack-agent",
+    "version": "<published-version>"
   }'
 # Save the returned plugin id: PLUGIN_ID
+```
+
+The plugin source lives at `packages/plugins/plugin-slack-agent` in the repo. For local
+development before a version is published, build it and install by absolute container path:
+
+```bash
+npx pnpm --filter @paperclipai/plugin-slack-agent build
+curl -X POST "$PAPERCLIP_URL/api/plugins/install" \
+  -H "Authorization: Bearer $BOARD_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "packageName": "/app/packages/plugins/plugin-slack-agent",
+    "isLocalPath": true
+  }'
 ```
 
 ### Configure the plugin
@@ -255,8 +272,8 @@ curl -X PUT "$PAPERCLIP_URL/api/plugins/$PLUGIN_ID/config" \
       {
         \"agentId\": \"$AGENT_ID\",
         \"companyId\": \"$COMPANY_ID\",
-        \"slackBotTokenRef\": \"STAN_BOT_TOKEN\",
-        \"slackSigningSecretRef\": \"STAN_SIGNING_SECRET\",
+        \"slackBotToken\": \"$STAN_BOT_TOKEN\",
+        \"slackSigningSecret\": \"$STAN_SIGNING_SECRET\",
         \"slackBotUserId\": \"$STAN_BOT_USER_ID\",
         \"displayName\": \"Stan\"
       }
@@ -267,8 +284,8 @@ curl -X PUT "$PAPERCLIP_URL/api/plugins/$PLUGIN_ID/config" \
 **Stan's config block:**
 - `agentId`: (from hire step)
 - `companyId`: `e0a06204-2861-4125-968f-8757a4add196`
-- `slackBotTokenRef`: `"STAN_BOT_TOKEN"`
-- `slackSigningSecretRef`: `"STAN_SIGNING_SECRET"`
+- `slackBotToken`: the `xoxb-...` value
+- `slackSigningSecret`: the signing-secret value
 - `slackBotUserId`: (from Slack — `U...` format)
 - `displayName`: `"Stan"`
 
@@ -343,7 +360,7 @@ rather than replacing it:
 {
   "agents": [
     { "agentId": "<stan-id>", ... },
-    { "agentId": "<new-agent-id>", "slackBotTokenRef": "NEW_AGENT_BOT_TOKEN", ... }
+    { "agentId": "<new-agent-id>", "slackBotToken": "xoxb-...", "slackSigningSecret": "...", ... }
   ]
 }
 ```

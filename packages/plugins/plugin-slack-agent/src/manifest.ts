@@ -18,7 +18,6 @@ const manifest: PaperclipPluginManifestV1 = {
     "plugin.state.read",
     "plugin.state.write",
     "http.outbound",
-    "secrets.read-ref",
     "events.subscribe",
     "activity.log.write",
     "agents.read",
@@ -43,15 +42,15 @@ const manifest: PaperclipPluginManifestV1 = {
               title: "Agent ID",
               description: "The Paperclip agent ID.",
             },
-            slackBotTokenRef: {
+            slackBotToken: {
               type: "string",
-              title: "Slack Bot Token Secret Ref",
-              description: "Secret reference for the Slack bot OAuth token (xoxb-...).",
+              title: "Slack Bot Token",
+              description: "The Slack bot OAuth token (xoxb-...).",
             },
-            slackSigningSecretRef: {
+            slackSigningSecret: {
               type: "string",
-              title: "Slack Signing Secret Ref",
-              description: "Secret reference for the Slack app signing secret.",
+              title: "Slack Signing Secret",
+              description: "The Slack app signing secret.",
             },
             slackBotUserId: {
               type: "string",
@@ -69,8 +68,14 @@ const manifest: PaperclipPluginManifestV1 = {
               description: "Optional human-readable label for logs (e.g. 'Stan', 'Kelly').",
             },
           },
-          required: ["agentId", "slackBotTokenRef", "slackSigningSecretRef", "slackBotUserId", "companyId"],
+          required: ["agentId", "slackBotToken", "slackSigningSecret", "slackBotUserId", "companyId"],
         },
+      },
+      secretRefAnchor: {
+        type: "string",
+        format: "secret-ref",
+        title: "(reserved — do not set)",
+        description: "Internal. Leave unset. Declared so the host scopes plugin secret-ref extraction to declared fields instead of treating every config UUID (agentId, companyId) as a disabled secret reference.",
       },
     },
     required: ["agents"],

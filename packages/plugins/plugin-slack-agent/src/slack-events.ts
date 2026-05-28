@@ -96,6 +96,7 @@ async function handleNewConversation(
     title: firstMessageTitle(event.text ?? ""),
     description: event.text ?? "",
     assigneeAgentId: agent.agentId,
+    status: "todo",
   });
 
   const [threadMap, channelMap] = await Promise.all([readThreadMap(ctx, agent.agentId), readChannelMap(ctx, agent.agentId)]);
