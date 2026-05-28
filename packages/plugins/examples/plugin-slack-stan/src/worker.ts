@@ -74,11 +74,11 @@ async function postStanReplyToSlack(ctx: PluginContext, config: StanPluginConfig
   });
 }
 
-function registerEventHandlers(ctx: PluginContext, config: StanPluginConfig): void {
+function registerEventHandlers(ctx: PluginContext): void {
   ctx.events.on("issue.comment.created", async (event: PluginEvent) => {
-    // Only relay comments authored by Stan's agent
+    const config = currentConfig;
+    if (!config) return;
     if (event.actorType !== "agent" || event.actorId !== config.stanAgentId) return;
-
     await postStanReplyToSlack(ctx, config, event);
   });
 }
@@ -92,13 +92,11 @@ const plugin: PaperclipPlugin = definePlugin({
     currentContext = ctx;
     const raw = await ctx.config.get();
     currentConfig = parseConfig(raw);
-    registerEventHandlers(ctx, currentConfig);
+    registerEventHandlers(ctx);
   },
 
   async onConfigChanged(newConfig: Record<string, unknown>) {
     currentConfig = parseConfig(newConfig);
-    // Re-registration of event handlers not required — they close over currentConfig
-    // by reference via module-level var, so the updated value is picked up automatically.
   },
 
   async onWebhook(input: PluginWebhookInput) {
