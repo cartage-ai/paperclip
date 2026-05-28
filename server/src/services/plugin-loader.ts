@@ -870,9 +870,15 @@ export function pluginLoader(
         // Use execFile (not exec) to avoid shell injection from package name/version.
         // --ignore-scripts prevents preinstall/install/postinstall hooks from
         // executing arbitrary code on the host before manifest validation.
+        // --prefer-online forces npm to revalidate cached registry metadata
+        // against the registry. Without it, the persistent npm cache (under
+        // $HOME on the deployment volume) keeps serving the highest version it
+        // already knows about, so a freshly published version is invisible and
+        // installs/upgrades silently no-op to the stale version — even when an
+        // explicit `pkg@version` spec is requested.
         await execFileAsync(
           "npm",
-          ["install", spec, "--prefix", targetInstallDir, "--save", "--ignore-scripts"],
+          ["install", spec, "--prefix", targetInstallDir, "--save", "--ignore-scripts", "--prefer-online"],
           { timeout: 120_000 }, // 2 minute timeout for npm install
         );
       } catch (err) {
