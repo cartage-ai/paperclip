@@ -21,8 +21,8 @@ const CONFIG: SlackAgentPluginConfig = {
   agents: [
     {
       agentId: STAN_AGENT_ID,
-      slackBotTokenRef: "ref:bot-token",
-      slackSigningSecretRef: "ref:signing-secret",
+      slackBotToken: BOT_TOKEN,
+      slackSigningSecret: SIGNING_SECRET,
       slackBotUserId: BOT_USER_ID,
       companyId: COMPANY_ID,
       displayName: "Stan",
@@ -91,15 +91,6 @@ beforeEach(async () => {
       } as never,
     ],
   });
-
-  // Override secrets to return test values
-  harness.ctx.secrets = {
-    resolve: async (ref: string) => {
-      if (ref === CONFIG.agents[0]!.slackBotTokenRef) return BOT_TOKEN;
-      if (ref === CONFIG.agents[0]!.slackSigningSecretRef) return SIGNING_SECRET;
-      return `resolved:${ref}`;
-    },
-  };
 
   // Override http.fetch to a no-op so Slack API calls don't go out
   harness.ctx.http = {
