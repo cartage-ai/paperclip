@@ -146,6 +146,35 @@ describe("onWebhook — slack-events", () => {
     expect(issueCount).toBe(1); // only one issue created despite two deliveries
   });
 
+  it("does not mark an event seen when processing throws, so the retry reprocesses", async () => {
+    const body = appMentionBody({ event_id: "Ev_transient" }) as Record<string, unknown>;
+    const rawBody = JSON.stringify(body);
+    const input = makeWebhookInput(rawBody, body);
+
+    // Fail the first delivery mid-processing (e.g. worker mid-restart / transient).
+    const realCreate = harness.ctx.issues!.create.bind(harness.ctx.issues);
+    let failNext = true;
+    harness.ctx.issues!.create = (async (...args: Parameters<typeof realCreate>) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("transient failure");
+      }
+      return realCreate(...args);
+    }) as typeof realCreate;
+
+    await expect(plugin.definition.onWebhook!(input)).rejects.toThrow("transient failure");
+
+    const afterFail = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) });
+    expect(afterFail == null).toBe(true); // nothing created on the failed delivery
+
+    // Slack retries the same event_id — it must NOT be deduped away.
+    await plugin.definition.onWebhook!(input);
+
+    const afterRetry = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
+    expect(afterRetry).not.toBeNull();
+    expect(Object.keys(afterRetry!)).toHaveLength(1);
+  });
+
   it("ignores self-messages from the bot user", async () => {
     const body = appMentionBody({ event: { type: "app_mention", user: BOT_USER_ID, text: "hi", ts: "1700000001.000100", channel: "C_GEN", channel_type: "channel" } });
     const rawBody = JSON.stringify(body);

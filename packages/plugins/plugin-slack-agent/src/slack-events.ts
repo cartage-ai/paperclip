@@ -2,7 +2,7 @@ import type { PluginContext, PluginWebhookInput } from "@paperclipai/plugin-sdk"
 import type { AgentEntry, IssueChannelMap, ThreadIssueMap } from "./constants.js";
 import { stateKey } from "./constants.js";
 import { verifySlackSignature } from "./slack-verify.js";
-import { isEventSeen } from "./state-dedupe.js";
+import { hasEventBeenSeen, markEventSeen } from "./state-dedupe.js";
 
 // ---------------------------------------------------------------------------
 // Slack event shape types
@@ -167,19 +167,36 @@ export async function handleSlackEvent(
     throw new Error("Slack signature verification failed");
   }
 
-  // 3. Dedupe on Slack event_id
+  // 3. Dedupe on Slack event_id — read-only check; mark only after success
+  //    so a failed delivery stays eligible for Slack's retry.
   const eventId = body?.event_id;
-  if (eventId && await isEventSeen(ctx, agent.agentId, eventId)) return;
+  if (eventId && await hasEventBeenSeen(ctx, agent.agentId, eventId)) return;
 
   const event = body?.event;
   if (!event) return;
 
-  // 4. Ignore messages from this agent's own bot user
+  await routeSlackEvent(ctx, agent, botToken, event);
+
+  if (eventId) await markEventSeen(ctx, agent.agentId, eventId);
+}
+
+/**
+ * Routes a verified, de-duplicated Slack event to the new-issue or continuation
+ * path. Throws on any side-effect failure so the caller skips `markEventSeen`
+ * and the delivery can be retried.
+ */
+async function routeSlackEvent(
+  ctx: PluginContext,
+  agent: AgentEntry,
+  botToken: string,
+  event: NonNullable<SlackEventBody["event"]>,
+): Promise<void> {
+  // Ignore messages from this agent's own bot user
   if (event.user === agent.slackBotUserId || event.bot_id) return;
 
   const isDm = event.channel_type === "im" || event.type === "message.im";
 
-  // 5. Route: DM — always create or continue
+  // Route: DM — always create or continue
   if (isDm) {
     const threadMap = await readThreadMap(ctx, agent.agentId);
     const key = dmKey(event.channel);
@@ -193,7 +210,7 @@ export async function handleSlackEvent(
     return;
   }
 
-  // 6. Route: app_mention — create new or continue thread
+  // Route: app_mention — create new or continue thread
   if (event.type === "app_mention") {
     const threadMap = await readThreadMap(ctx, agent.agentId);
     const threadTs = event.thread_ts ?? event.ts;
@@ -208,7 +225,7 @@ export async function handleSlackEvent(
     return;
   }
 
-  // 7. Route: untagged channel message in a tracked thread
+  // Route: untagged channel message in a tracked thread
   if (event.type === "message" && event.thread_ts) {
     const threadMap = await readThreadMap(ctx, agent.agentId);
     const key = channelKey(event.channel, event.thread_ts);
