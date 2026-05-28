@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import manifest from "../src/manifest.js";
 import plugin from "../src/worker.js";
-import { STATE_KEYS, type IssueChannelMap } from "../src/constants.js";
+import { stateKey, type IssueChannelMap } from "../src/constants.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -13,11 +13,16 @@ const STAN_AGENT_ID = "agent-stan";
 const BOT_TOKEN = "xoxb-test-token";
 
 const CONFIG = {
-  slackBotTokenRef: "ref:bot-token",
-  slackSigningSecretRef: "ref:signing-secret",
-  stanAgentId: STAN_AGENT_ID,
-  slackBotUserId: "U_BOT",
-  companyId: COMPANY_ID,
+  agents: [
+    {
+      agentId: STAN_AGENT_ID,
+      slackBotTokenRef: "ref:bot-token",
+      slackSigningSecretRef: "ref:signing-secret",
+      slackBotUserId: "U_BOT",
+      companyId: COMPANY_ID,
+      displayName: "Stan",
+    },
+  ],
 };
 
 // ---------------------------------------------------------------------------
@@ -71,7 +76,7 @@ beforeEach(async () => {
         createdByUserId: null,
         issueNumber: null,
         identifier: null,
-        originKind: "plugin:paperclip-slack-stan",
+        originKind: "plugin:paperclip-slack-agent",
         originId: null,
         originRunId: null,
         requestDepth: 0,
@@ -109,13 +114,13 @@ beforeEach(async () => {
   const channelMap: IssueChannelMap = {
     "issue-1": { channelId: "C_GENERAL", threadTs: "1700000001.000100" },
   };
-  harness.ctx.state.set({ scopeKind: "instance", stateKey: STATE_KEYS.issueChannelMap }, channelMap);
+  harness.ctx.state.set({ scopeKind: "instance", stateKey: stateKey.issueChannelMap(STAN_AGENT_ID) }, channelMap);
 
   // Override secrets
   harness.ctx.secrets = {
     resolve: async (ref: string) => {
-      if (ref === CONFIG.slackBotTokenRef) return BOT_TOKEN;
-      if (ref === CONFIG.slackSigningSecretRef) return "signing-secret";
+      if (ref === CONFIG.agents[0]!.slackBotTokenRef) return BOT_TOKEN;
+      if (ref === CONFIG.agents[0]!.slackSigningSecretRef) return "signing-secret";
       return `resolved:${ref}`;
     },
   };
