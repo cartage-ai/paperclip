@@ -64,6 +64,11 @@ export function privateHostnameGuard(opts: {
   });
 
   return (req, res, next) => {
+    if (req.path === "/api/health" || req.path.startsWith("/api/health/")) {
+      next();
+      return;
+    }
+
     const hostname = extractHostname(req);
     const wantsJson = req.path.startsWith("/api") || req.accepts(["json", "html", "text"]) === "json";
 
