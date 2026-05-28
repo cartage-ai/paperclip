@@ -26,4 +26,7 @@ if [ "$changed" = "1" ]; then
     chown -R node:node /paperclip
 fi
 
+# Railway volumes mount as root regardless of image ownership — always fix.
+chown -R node:node /paperclip
+
 exec gosu node "$@"
