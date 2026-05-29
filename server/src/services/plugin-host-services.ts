@@ -26,7 +26,7 @@ import type {
   PluginIssueOrchestrationSummary,
   PluginExecutionWorkspaceMetadata,
 } from "@paperclipai/plugin-sdk";
-import type { CreateIssueThreadInteraction, InviteJoinType, IssueDocumentSummary, PermissionKey, PrincipalType } from "@paperclipai/shared";
+import type { CreateIssueThreadInteraction, InviteJoinType, IssueCommentAuthorType, IssueCommentMetadata, IssueCommentPresentation, IssueDocumentSummary, PermissionKey, PrincipalType } from "@paperclipai/shared";
 import { pluginOperationIssueOriginKind } from "@paperclipai/shared";
 import { companyService } from "./companies.js";
 import { agentService } from "./agents.js";
@@ -2002,6 +2002,13 @@ export function buildHostServices(
           params.issueId,
           params.body,
           { agentId: params.authorAgentId },
+          {
+            authorType: params.authorType as IssueCommentAuthorType | undefined,
+            presentation: params.presentation as IssueCommentPresentation | undefined,
+            metadata: params.metadata as IssueCommentMetadata | undefined,
+            createdAt: params.createdAt ?? undefined,
+            skipActorTypeCheck: !params.authorAgentId && !!params.authorType,
+          },
         )) as IssueComment;
         await logPluginActivity({
           companyId,

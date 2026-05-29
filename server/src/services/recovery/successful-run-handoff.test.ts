@@ -100,6 +100,13 @@ describe("successful run handoff decision", () => {
     });
   });
 
+  it("does not queue for chat mode issues regardless of missing disposition", () => {
+    expect(decide({ issue: { ...issue, workMode: "chat" } as any })).toEqual({
+      kind: "skip",
+      reason: "chat issue exempt from disposition check",
+    });
+  });
+
   it("does not queue when a successful run records an accepted next-action path", () => {
     expect(decide({ issue: { ...issue, status: "in_review" } as any })).toEqual({
       kind: "skip",

@@ -326,7 +326,7 @@ describe("onWebhook — file attachments", () => {
 
     expect(upsertSpy).toHaveBeenCalledOnce();
     const call = upsertSpy.mock.calls[0]![0];
-    expect(call.key).toBe("slack-attachment:spec.pdf-F_PDF1");
+    expect(call.key).toBe("slack-attachment-spec-pdf-f-pdf1");
     expect(call.body).toBe("mock extracted pdf text");
     expect(call.title).toBe("spec.pdf");
   });
@@ -371,7 +371,7 @@ describe("onWebhook — file attachments", () => {
     expect(upsertSpy).toHaveBeenCalledOnce();
     const call = upsertSpy.mock.calls[0]![0];
     expect(call.issueId).toBe(issueId);
-    expect(call.key).toBe("slack-attachment:notes.txt-F_TXT1");
+    expect(call.key).toBe("slack-attachment-notes-txt-f-txt1");
     expect(call.body).toBe("hello world notes text");
   });
 
@@ -390,8 +390,29 @@ describe("onWebhook — file attachments", () => {
 
     expect(upsertSpy).toHaveBeenCalledTimes(2);
     const keys = upsertSpy.mock.calls.map((c) => c[0].key);
-    expect(keys).toContain("slack-attachment:a.txt-F_M1");
-    expect(keys).toContain("slack-attachment:b.txt-F_M2");
+    expect(keys).toContain("slack-attachment-a-txt-f-m1");
+    expect(keys).toContain("slack-attachment-b-txt-f-m2");
+  });
+
+  it("messy filename (spaces, parens, dots, caps) → key passes issueDocumentKeySchema", async () => {
+    const file: SlackFileFixture = {
+      id: "F_OGRE1",
+      name: "OGRE_API_Integration_Guide (1) (1).pdf",
+      mimetype: "application/pdf",
+      size: 4096,
+      url_private_download: "https://files.slack.com/files-pri/ogre.pdf",
+    };
+    const body = appMentionWithFiles([file], { event_id: "Ev_ogre" });
+    harness.ctx.http = { fetch: makeFileFetch({ "OGRE_API_Integration_Guide (1) (1).pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) }) };
+    const upsertSpy = vi.spyOn(harness.ctx.issues.documents, "upsert");
+
+    await plugin.definition.onWebhook!(makeWebhookInput(JSON.stringify(body), body));
+
+    expect(upsertSpy).toHaveBeenCalledOnce();
+    const { key } = upsertSpy.mock.calls[0]![0];
+    expect(key).toMatch(/^[a-z0-9][a-z0-9_-]*$/);
+    expect(key.length).toBeLessThanOrEqual(64);
+    expect(key).toContain("f-ogre1");
   });
 
   it("unsupported file type → skip comment logged, no document upserted", async () => {
@@ -469,7 +490,7 @@ describe("onWebhook — file attachments", () => {
     await plugin.definition.onWebhook!(makeWebhookInput(rawBody, body));
 
     expect(upsertSpy).toHaveBeenCalledOnce();
-    expect(upsertSpy.mock.calls[0]![0].key).toContain("good.txt");
+    expect(upsertSpy.mock.calls[0]![0].key).toContain("good-txt");
     const errComment = commentSpy.mock.calls.find(([, b]) => b.includes("fail.pdf"));
     expect(errComment).toBeDefined();
   });

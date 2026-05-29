@@ -92,6 +92,17 @@ async function postAckReaction(
 // File attachment ingestion
 // ---------------------------------------------------------------------------
 
+// Build a key matching the server's issueDocumentKeySchema:
+// ^[a-z0-9][a-z0-9_-]*$, max 64 chars. Raw filenames (spaces, dots, parens,
+// uppercase) would fail validation, so slug each part and cap the name.
+function toDocumentKey(fileName: string, fileId: string): string {
+  const slug = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const namePart = slug(fileName).slice(0, 30).replace(/-+$/g, "");
+  const idPart = slug(fileId);
+  return [ATTACHMENT_KEY_PREFIX, namePart, idPart].filter(Boolean).join("-");
+}
+
 async function ingestSingleFile(
   ctx: PluginContext,
   botToken: string,
@@ -136,8 +147,28 @@ async function ingestSingleFile(
     body = await res.text();
   }
 
-  const key = `${ATTACHMENT_KEY_PREFIX}:${file.name}-${file.id}`;
+  const key = toDocumentKey(file.name, file.id);
   await ctx.issues.documents.upsert({ issueId, key, body, companyId, title: file.name });
+}
+
+async function resolveSlackDisplayName(
+  ctx: PluginContext,
+  botToken: string,
+  userId: string,
+): Promise<string> {
+  try {
+    const url = `https://slack.com/api/users.info?user=${encodeURIComponent(userId)}`;
+    const res = await ctx.http.fetch(url, {
+      headers: { Authorization: `Bearer ${botToken}`, "Content-Type": "application/json" },
+    });
+    const data = await res.json() as { ok: boolean; user?: { real_name?: string; name?: string } };
+    if (data.ok && data.user) {
+      return data.user.real_name || data.user.name || userId;
+    }
+  } catch {
+    // fall through to userId
+  }
+  return userId;
 }
 
 async function ingestFileAttachments(
@@ -179,12 +210,26 @@ async function handleNewConversation(
     description: event.text ?? "",
     assigneeAgentId: agent.agentId,
     status: "todo",
+    workMode: "chat",
   });
 
   const [threadMap, channelMap] = await Promise.all([readThreadMap(ctx, agent.agentId), readChannelMap(ctx, agent.agentId)]);
   threadMap[mapKey] = issue.id;
   channelMap[issue.id] = { channelId, threadTs };
   await persistThreadMaps(ctx, agent.agentId, threadMap, channelMap);
+
+  const displayName = await resolveSlackDisplayName(ctx, botToken, event.user ?? "");
+  const slackTs = event.ts ? new Date(parseFloat(event.ts) * 1000).toISOString() : undefined;
+  await ctx.issues.createComment(issue.id, event.text ?? "", agent.companyId, {
+    authorType: "user",
+    presentation: {
+      kind: "message",
+      tone: "neutral",
+      title: displayName ? `Slack · ${displayName}` : "Slack",
+      detailsDefaultOpen: false,
+    },
+    createdAt: slackTs,
+  });
 
   if (event.files?.length) {
     await ingestFileAttachments(ctx, botToken, event.files, issue.id, agent.companyId);
@@ -205,7 +250,18 @@ async function handleContinuation(
   event: NonNullable<SlackEventBody["event"]>,
   issueId: string,
 ): Promise<void> {
-  await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId);
+  const displayName = await resolveSlackDisplayName(ctx, botToken, event.user ?? "");
+  const slackTs = event.ts ? new Date(parseFloat(event.ts) * 1000).toISOString() : undefined;
+  await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId, {
+    authorType: "user",
+    presentation: {
+      kind: "message",
+      tone: "neutral",
+      title: displayName ? `Slack · ${displayName}` : "Slack",
+      detailsDefaultOpen: false,
+    },
+    createdAt: slackTs,
+  });
 
   if (event.files?.length) {
     await ingestFileAttachments(ctx, botToken, event.files, issueId, agent.companyId);

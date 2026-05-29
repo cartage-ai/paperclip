@@ -1363,6 +1363,7 @@ export interface PluginIssuesClient {
     executionWorkspaceId?: string | null;
     executionWorkspacePreference?: string | null;
     executionWorkspaceSettings?: Record<string, unknown> | null;
+    workMode?: string;
     actor?: PluginIssueMutationActor;
   }): Promise<Issue>;
   update(
@@ -1428,7 +1429,18 @@ export interface PluginIssuesClient {
     issueId: string,
     body: string,
     companyId: string,
-    options?: { authorAgentId?: string },
+    options?: {
+      authorAgentId?: string;
+      authorType?: string;
+      presentation?: {
+        kind: string;
+        tone: string;
+        title?: string | null;
+        detailsDefaultOpen: boolean;
+      } | null;
+      metadata?: Record<string, unknown> | null;
+      createdAt?: string | null;
+    },
   ): Promise<IssueComment>;
   createInteraction(
     issueId: string,

@@ -1,5 +1,5 @@
 export const PLUGIN_ID = "paperclip-slack-agent";
-export const PLUGIN_VERSION = "0.1.7";
+export const PLUGIN_VERSION = "0.1.10";
 
 export const ATTACHMENT_KEY_PREFIX = "slack-attachment";
 export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;

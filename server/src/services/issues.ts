@@ -5135,6 +5135,7 @@ export function issueService(db: Db) {
         presentation?: IssueCommentPresentation | null;
         metadata?: IssueCommentMetadata | null;
         createdAt?: Date | string | null;
+        skipActorTypeCheck?: boolean;
       },
     ) => {
       const issue = await db
@@ -5152,7 +5153,9 @@ export function issueService(db: Db) {
       const authorType = issueCommentAuthorTypeSchema.parse(
         options?.authorType ?? (actor.agentId ? "agent" : actor.userId ? "user" : "system"),
       );
-      assertIssueCommentAuthorTypeAllowed(actor, authorType);
+      if (!options?.skipActorTypeCheck) {
+        assertIssueCommentAuthorTypeAllowed(actor, authorType);
+      }
       const presentation = issueCommentPresentationSchema.nullable().parse(options?.presentation ?? null);
       const metadata = issueCommentMetadataSchema.nullable().parse(options?.metadata ?? null);
       const createdAt = options?.createdAt ? new Date(options.createdAt) : null;

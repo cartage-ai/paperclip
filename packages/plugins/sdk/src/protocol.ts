@@ -994,6 +994,7 @@ export interface WorkerToHostMethods {
       executionWorkspaceId?: string | null;
       executionWorkspacePreference?: string | null;
       executionWorkspaceSettings?: Record<string, unknown> | null;
+      workMode?: string | null;
       actorAgentId?: string | null;
       actorUserId?: string | null;
       actorRunId?: string | null;
@@ -1106,7 +1107,16 @@ export interface WorkerToHostMethods {
     result: IssueComment[],
   ];
   "issues.createComment": [
-    params: { issueId: string; body: string; companyId: string; authorAgentId?: string },
+    params: {
+      issueId: string;
+      body: string;
+      companyId: string;
+      authorAgentId?: string;
+      authorType?: string;
+      presentation?: { kind: string; tone: string; title?: string | null; detailsDefaultOpen: boolean } | null;
+      metadata?: Record<string, unknown> | null;
+      createdAt?: string | null;
+    },
     result: IssueComment,
   ];
   "issues.createInteraction": [

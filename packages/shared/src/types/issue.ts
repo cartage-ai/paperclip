@@ -560,13 +560,21 @@ export interface IssueCommentMetadataRunLinkRow extends IssueCommentMetadataRowB
   title?: string | null;
 }
 
+export interface IssueCommentMetadataDocumentLinkRow extends IssueCommentMetadataRowBase {
+  type: "document_link";
+  label: string;
+  documentKey: string;
+  mimeType?: string | null;
+}
+
 export type IssueCommentMetadataRow =
   | IssueCommentMetadataTextRow
   | IssueCommentMetadataCodeRow
   | IssueCommentMetadataKeyValueRow
   | IssueCommentMetadataIssueLinkRow
   | IssueCommentMetadataAgentLinkRow
-  | IssueCommentMetadataRunLinkRow;
+  | IssueCommentMetadataRunLinkRow
+  | IssueCommentMetadataDocumentLinkRow;
 
 export interface IssueCommentMetadataSection {
   title?: string | null;

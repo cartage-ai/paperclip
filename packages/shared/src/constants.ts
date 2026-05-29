@@ -147,7 +147,7 @@ export const INBOX_MINE_ISSUE_STATUS_FILTER = INBOX_MINE_ISSUE_STATUSES.join(","
 
 export const ISSUE_PRIORITIES = ["critical", "high", "medium", "low"] as const;
 export type IssuePriority = (typeof ISSUE_PRIORITIES)[number];
-export const ISSUE_WORK_MODES = ["standard", "planning"] as const;
+export const ISSUE_WORK_MODES = ["standard", "planning", "chat"] as const;
 export type IssueWorkMode = (typeof ISSUE_WORK_MODES)[number];
 export const MAX_ISSUE_REQUEST_DEPTH = 1024;
 
@@ -167,6 +167,7 @@ export const ISSUE_COMMENT_METADATA_ROW_TYPES = [
   "issue_link",
   "agent_link",
   "run_link",
+  "document_link",
 ] as const;
 export type IssueCommentMetadataRowType = (typeof ISSUE_COMMENT_METADATA_ROW_TYPES)[number];
 
