@@ -92,6 +92,17 @@ async function postAckReaction(
 // File attachment ingestion
 // ---------------------------------------------------------------------------
 
+// Build a key matching the server's issueDocumentKeySchema:
+// ^[a-z0-9][a-z0-9_-]*$, max 64 chars. Raw filenames (spaces, dots, parens,
+// uppercase) would fail validation, so slug each part and cap the name.
+function toDocumentKey(fileName: string, fileId: string): string {
+  const slug = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const namePart = slug(fileName).slice(0, 30).replace(/-+$/g, "");
+  const idPart = slug(fileId);
+  return [ATTACHMENT_KEY_PREFIX, namePart, idPart].filter(Boolean).join("-");
+}
+
 async function ingestSingleFile(
   ctx: PluginContext,
   botToken: string,
@@ -136,7 +147,7 @@ async function ingestSingleFile(
     body = await res.text();
   }
 
-  const key = `${ATTACHMENT_KEY_PREFIX}:${file.name}-${file.id}`;
+  const key = toDocumentKey(file.name, file.id);
   await ctx.issues.documents.upsert({ issueId, key, body, companyId, title: file.name });
 }
 
