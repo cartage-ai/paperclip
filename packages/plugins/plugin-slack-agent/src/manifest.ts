@@ -22,6 +22,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "activity.log.write",
     "agents.read",
     "webhooks.receive",
+    "issue.documents.write",
   ],
   entrypoints: {
     worker: "./dist/worker.js",
