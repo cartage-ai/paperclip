@@ -784,6 +784,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
             executionWorkspaceId: input.executionWorkspaceId,
             executionWorkspacePreference: input.executionWorkspacePreference,
             executionWorkspaceSettings: input.executionWorkspaceSettings,
+            workMode: input.workMode,
             actorAgentId: input.actor?.actorAgentId,
             actorUserId: input.actor?.actorUserId,
             actorRunId: input.actor?.actorRunId,
@@ -849,8 +850,23 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
           return callHost("issues.listComments", { issueId, companyId });
         },
 
-        async createComment(issueId: string, body: string, companyId: string, options?: { authorAgentId?: string }) {
-          return callHost("issues.createComment", { issueId, body, companyId, authorAgentId: options?.authorAgentId });
+        async createComment(issueId: string, body: string, companyId: string, options?: {
+          authorAgentId?: string;
+          authorType?: string;
+          presentation?: { kind: string; tone: string; title?: string | null; detailsDefaultOpen: boolean } | null;
+          metadata?: Record<string, unknown> | null;
+          createdAt?: string | null;
+        }) {
+          return callHost("issues.createComment", {
+            issueId,
+            body,
+            companyId,
+            authorAgentId: options?.authorAgentId,
+            authorType: options?.authorType,
+            presentation: options?.presentation,
+            metadata: options?.metadata,
+            createdAt: options?.createdAt,
+          });
         },
 
         async createInteraction(issueId: string, interaction, companyId: string, options?: { authorAgentId?: string }) {
