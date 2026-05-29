@@ -895,6 +895,39 @@ describe("buildIssueChatMessages", () => {
       },
     });
   });
+
+  it("uses presentation.title as author name for externally-attributed user comments with no authorUserId", () => {
+    const messages = buildIssueChatMessages({
+      comments: [
+        createComment({
+          authorUserId: null,
+          authorAgentId: null,
+          authorType: "user",
+          presentation: {
+            kind: "message",
+            tone: "neutral",
+            title: "Slack · Alice",
+            detailsDefaultOpen: false,
+          },
+        }),
+      ],
+      timelineEvents: [],
+      linkedRuns: [],
+      liveRuns: [],
+      currentUserId: "user-1",
+    });
+
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      metadata: {
+        custom: {
+          authorName: "Slack · Alice",
+          authorUserId: null,
+          authorAgentId: null,
+        },
+      },
+    });
+  });
 });
 
 describe("stabilizeThreadMessages", () => {
