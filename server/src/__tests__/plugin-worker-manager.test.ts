@@ -275,6 +275,52 @@ describe("plugin-worker-manager stderr failure context", () => {
     }
   });
 
+  it("registers a company-less invocation for handleWebhook so nested host calls are scoped, not denied", async () => {
+    const companiesGet = vi.fn(async (params: { companyId: string }) => ({ id: params.companyId }));
+    const handle = createPluginWorkerHandle("test.plugin", {
+      entrypointPath: INVOCATION_SCOPE_WORKER_ENTRYPOINT,
+      manifest: TEST_MANIFEST,
+      config: {},
+      instanceInfo: {
+        instanceId: "instance-1",
+        hostVersion: "1.0.0",
+      },
+      apiVersion: 1,
+      hostHandlers: {
+        "companies.get": companiesGet as never,
+      },
+    });
+
+    try {
+      await handle.start();
+
+      // A webhook carries no companyId — the plugin resolves the target company
+      // itself and calls back with an explicit companyId. The nested call must
+      // resolve (not be denied as a missing/leaked invocation scope), and the
+      // host must propagate a present, company-less invocation scope.
+      await expect(handle.call("handleWebhook", {
+        endpointKey: "slack-events",
+        headers: {},
+        rawBody: "{}",
+        parsedBody: {},
+        requestId: "req-1",
+        params: {
+          mode: "echo",
+          requestedCompanyId: "company-z",
+        },
+      } as unknown as HostToWorkerMethods["handleWebhook"][0])).resolves.toEqual({
+        id: "company-z",
+      });
+
+      expect(companiesGet).toHaveBeenCalledWith(
+        { companyId: "company-z" },
+        { invocationScope: {} },
+      );
+    } finally {
+      await handle.stop().catch(() => undefined);
+    }
+  });
+
   it("rejects performAction nested host calls that omit the invocation id", async () => {
     const handlers = createHostClientHandlers({
       pluginId: "test.plugin",

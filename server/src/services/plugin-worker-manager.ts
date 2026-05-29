@@ -528,6 +528,20 @@ export function createPluginWorkerHandle(
       return companyId ? { companyId } : null;
     }
 
+    // Self-routing top-level handlers resolve their own target company from the
+    // payload, so no companyId is derivable here. Register a company-less
+    // invocation anyway: it gives their nested worker→host calls a valid
+    // invocation id, so they are not mistaken for leaked callbacks and denied
+    // whenever an unrelated invocation is concurrently active. The explicit
+    // companyId on each nested call still governs access.
+    if (
+      method === "handleWebhook" ||
+      method === "runJob" ||
+      method === "handleApiRequest"
+    ) {
+      return {};
+    }
+
     return null;
   }
 
