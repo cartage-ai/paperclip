@@ -1,12 +1,21 @@
 import type { PluginContext, PluginWebhookInput } from "@paperclipai/plugin-sdk";
 import type { AgentEntry, IssueChannelMap, ThreadIssueMap } from "./constants.js";
-import { stateKey } from "./constants.js";
+import { stateKey, ATTACHMENT_KEY_PREFIX, ATTACHMENT_MAX_BYTES } from "./constants.js";
 import { verifySlackSignature } from "./slack-verify.js";
 import { hasEventBeenSeen, markEventSeen } from "./state-dedupe.js";
+import pdfParse from "pdf-parse";
 
 // ---------------------------------------------------------------------------
 // Slack event shape types
 // ---------------------------------------------------------------------------
+
+type SlackFile = {
+  id: string;
+  name: string;
+  mimetype: string;
+  size: number;
+  url_private_download: string;
+};
 
 type SlackEventBody = {
   type: string;
@@ -21,6 +30,7 @@ type SlackEventBody = {
     channel: string;
     channel_type?: string;
     thread_ts?: string;
+    files?: SlackFile[];
   };
   team_id?: string;
 };
@@ -79,6 +89,78 @@ async function postAckReaction(
 }
 
 // ---------------------------------------------------------------------------
+// File attachment ingestion
+// ---------------------------------------------------------------------------
+
+async function ingestSingleFile(
+  ctx: PluginContext,
+  botToken: string,
+  file: SlackFile,
+  issueId: string,
+  companyId: string,
+): Promise<void> {
+  if (file.size > ATTACHMENT_MAX_BYTES) {
+    await ctx.issues.createComment(
+      issueId,
+      `[Slack attachment] Skipped "${file.name}" — file too large (${(file.size / (1024 * 1024)).toFixed(1)} MB, limit 10 MB).`,
+      companyId,
+    );
+    return;
+  }
+
+  const isSupportedType =
+    file.mimetype === "application/pdf" ||
+    file.mimetype.startsWith("text/") ||
+    (file.mimetype === "application/octet-stream" && file.name.endsWith(".md"));
+
+  if (!isSupportedType) {
+    await ctx.issues.createComment(
+      issueId,
+      `[Slack attachment] Skipped "${file.name}" — unsupported file type (${file.mimetype}).`,
+      companyId,
+    );
+    return;
+  }
+
+  const res = await ctx.http.fetch(file.url_private_download, {
+    headers: { Authorization: `Bearer ${botToken}` },
+  });
+  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
+
+  let body: string;
+  if (file.mimetype === "application/pdf") {
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const data = await pdfParse(buffer);
+    body = data.text;
+  } else {
+    body = await res.text();
+  }
+
+  const key = `${ATTACHMENT_KEY_PREFIX}:${file.name}-${file.id}`;
+  await ctx.issues.documents.upsert({ issueId, key, body, companyId, title: file.name });
+}
+
+async function ingestFileAttachments(
+  ctx: PluginContext,
+  botToken: string,
+  files: SlackFile[],
+  issueId: string,
+  companyId: string,
+): Promise<void> {
+  for (const file of files) {
+    try {
+      await ingestSingleFile(ctx, botToken, file, issueId, companyId);
+    } catch (err) {
+      await ctx.issues.createComment(
+        issueId,
+        `[Slack attachment] Failed to ingest "${file.name}": ${err instanceof Error ? err.message : String(err)}`,
+        companyId,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // New-issue path
 // ---------------------------------------------------------------------------
 
@@ -104,6 +186,10 @@ async function handleNewConversation(
   channelMap[issue.id] = { channelId, threadTs };
   await persistThreadMaps(ctx, agent.agentId, threadMap, channelMap);
 
+  if (event.files?.length) {
+    await ingestFileAttachments(ctx, botToken, event.files, issue.id, agent.companyId);
+  }
+
   await ctx.issues.requestWakeup(issue.id, agent.companyId, { reason: "Slack message received" });
   await postAckReaction(ctx, botToken, event.channel, event.ts);
 }
@@ -120,6 +206,11 @@ async function handleContinuation(
   issueId: string,
 ): Promise<void> {
   await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId);
+
+  if (event.files?.length) {
+    await ingestFileAttachments(ctx, botToken, event.files, issueId, agent.companyId);
+  }
+
   await ctx.issues.requestWakeup(issueId, agent.companyId, { reason: "Slack thread reply" });
   await postAckReaction(ctx, botToken, event.channel, event.ts);
 }

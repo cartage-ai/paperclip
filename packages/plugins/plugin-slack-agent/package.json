@@ -31,7 +31,8 @@
     "typecheck": "pnpm --filter @paperclipai/plugin-sdk ensure-build-deps && tsc --noEmit"
   },
   "dependencies": {
-    "@paperclipai/plugin-sdk": "workspace:*"
+    "@paperclipai/plugin-sdk": "workspace:*",
+    "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
