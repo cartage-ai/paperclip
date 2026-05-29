@@ -1459,7 +1459,7 @@ export function pluginLoader(
       const newCaps = newManifest.capabilities ?? [];
       const escalated = newCaps.filter((c) => !oldCaps.has(c));
 
-      if (escalated.length > 0) {
+      if (escalated.length > 0 && process.env.PAPERCLIP_PLUGIN_ALLOW_CAPABILITY_ESCALATION !== "true") {
         log.warn(
           { pluginId, escalated, oldVersion: oldManifest.version, newVersion: newManifest.version },
           "plugin-loader: upgrade introduces new capabilities — requires admin approval",
@@ -1467,7 +1467,14 @@ export function pluginLoader(
         throw new Error(
           `Upgrade for "${pluginId}" introduces new capabilities that require approval: ${escalated.join(", ")}. ` +
             `The previous version declared [${[...oldCaps].join(", ")}]. ` +
-            `Please review and approve the capability escalation before upgrading.`,
+            `Set PAPERCLIP_PLUGIN_ALLOW_CAPABILITY_ESCALATION=true in development to bypass this guard.`,
+        );
+      }
+
+      if (escalated.length > 0) {
+        log.warn(
+          { pluginId, escalated, oldVersion: oldManifest.version, newVersion: newManifest.version },
+          "plugin-loader: allowing capability escalation because PAPERCLIP_PLUGIN_ALLOW_CAPABILITY_ESCALATION=true",
         );
       }
 

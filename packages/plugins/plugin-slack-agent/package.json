@@ -1,6 +1,6 @@
 {
   "name": "@cartage/paperclip-plugin-slack-agent",
-  "version": "0.1.15",
+  "version": "0.1.17",
   "description": "Generic Slack-chat plugin — connect one or more Paperclip agents to Slack via @mention or DM",
   "type": "module",
   "private": false,

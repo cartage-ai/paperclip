@@ -150,6 +150,17 @@ describe("onWebhook — slack-events", () => {
     expect(issueCount).toBe(1); // only one issue created despite two deliveries
   });
 
+  it("dedupes distinct Slack events for the same message timestamp", async () => {
+    const firstBody = appMentionBody({ event_id: "Ev_same_message_1" }) as Record<string, unknown>;
+    const secondBody = appMentionBody({ event_id: "Ev_same_message_2" }) as Record<string, unknown>;
+
+    await plugin.definition.onWebhook!(makeWebhookInput(JSON.stringify(firstBody), firstBody));
+    await plugin.definition.onWebhook!(makeWebhookInput(JSON.stringify(secondBody), secondBody));
+
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
+    expect(Object.keys(threadMap ?? {})).toHaveLength(1);
+  });
+
   it("does not mark an event seen when processing throws, so the retry reprocesses", async () => {
     const body = appMentionBody({ event_id: "Ev_transient" }) as Record<string, unknown>;
     const rawBody = JSON.stringify(body);
@@ -427,6 +438,30 @@ describe("onWebhook — file attachments", () => {
     const keys = upsertSpy.mock.calls.map((c) => c[0].key);
     expect(keys).toContain("slack-attachment-a-txt-f-m1");
     expect(keys).toContain("slack-attachment-b-txt-f-m2");
+  });
+
+  it("skips already-ingested Slack files so duplicate deliveries do not update documents", async () => {
+    const file: SlackFileFixture = {
+      id: "F_DUP1",
+      name: "spec.pdf",
+      mimetype: "application/pdf",
+      size: 1024,
+      url_private_download: "https://files.slack.com/files-pri/spec.pdf",
+    };
+    const body = appMentionWithFiles([file], { event_id: "Ev_dup_file" });
+    harness.ctx.http = { fetch: makeFileFetch({ "spec.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) }) };
+
+    await plugin.definition.onWebhook!(makeWebhookInput(JSON.stringify(body), body));
+
+    const duplicateBody = appMentionWithFiles([file], {
+      event_id: "Ev_dup_file_retry",
+      event: { ...(body as { event: object }).event, ts: "1700000020.000101", thread_ts: "1700000020.000100" },
+    });
+    const upsertSpy = vi.spyOn(harness.ctx.issues.documents, "upsert");
+
+    await plugin.definition.onWebhook!(makeWebhookInput(JSON.stringify(duplicateBody), duplicateBody));
+
+    expect(upsertSpy).not.toHaveBeenCalled();
   });
 
   it("messy filename (spaces, parens, dots, caps) → key passes issueDocumentKeySchema", async () => {

@@ -947,6 +947,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
               title: input.title,
               format: input.format,
               changeSummary: input.changeSummary,
+              baseRevisionId: input.baseRevisionId,
             });
           },
 

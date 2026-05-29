@@ -32,6 +32,7 @@ import {
   documentAnnotationComments,
   documentAnnotationThreads,
   documentRevisions,
+  documents,
   issueDocuments,
   heartbeatRunEvents,
   heartbeatRuns,
@@ -206,6 +207,9 @@ const MANAGED_WORKSPACE_GIT_CLONE_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_INLINE_WAKE_COMMENTS = 8;
 const MAX_INLINE_WAKE_COMMENT_BODY_CHARS = 4_000;
 const MAX_INLINE_WAKE_COMMENT_BODY_TOTAL_CHARS = 12_000;
+const MAX_INLINE_WAKE_DOCUMENTS = 5;
+const MAX_INLINE_WAKE_DOCUMENT_BODY_CHARS = 8_000;
+const MAX_INLINE_WAKE_DOCUMENT_BODY_TOTAL_CHARS = 20_000;
 const execFile = promisify(execFileCallback);
 const EXECUTION_PATH_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"] as const;
 const CANCELLABLE_HEARTBEAT_RUN_STATUSES = ["queued", "running", "scheduled_retry"] as const;
@@ -1958,10 +1962,55 @@ export function mergeCoalescedContextSnapshot(
   return merged;
 }
 
+type InlineIssueDocumentContext = {
+  key: string;
+  title: string | null;
+  body: string;
+  bodyTruncated: boolean;
+  format: string;
+  updatedAt: Date;
+};
+
+async function listInlineIssueDocuments(db: Db, input: { companyId: string; issueId: string }): Promise<InlineIssueDocumentContext[]> {
+  const rows = await db
+    .select({
+      key: issueDocuments.key,
+      title: documents.title,
+      body: documents.latestBody,
+      format: documents.format,
+      updatedAt: documents.updatedAt,
+    })
+    .from(issueDocuments)
+    .innerJoin(documents, eq(issueDocuments.documentId, documents.id))
+    .where(and(
+      eq(issueDocuments.companyId, input.companyId),
+      eq(issueDocuments.issueId, input.issueId),
+      sql`${issueDocuments.key} != ${ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY}`,
+    ))
+    .orderBy(desc(documents.updatedAt), asc(issueDocuments.key))
+    .limit(MAX_INLINE_WAKE_DOCUMENTS + 1);
+
+  let remainingBodyChars = MAX_INLINE_WAKE_DOCUMENT_BODY_TOTAL_CHARS;
+  return rows.slice(0, MAX_INLINE_WAKE_DOCUMENTS).map((row, index) => {
+    const allowedBodyChars = Math.max(0, Math.min(MAX_INLINE_WAKE_DOCUMENT_BODY_CHARS, remainingBodyChars));
+    const body = row.body.length > allowedBodyChars ? row.body.slice(0, allowedBodyChars) : row.body;
+    remainingBodyChars -= body.length;
+    return {
+      key: row.key,
+      title: row.title,
+      body,
+      bodyTruncated: body.length < row.body.length || rows.length > MAX_INLINE_WAKE_DOCUMENTS && index === MAX_INLINE_WAKE_DOCUMENTS - 1,
+      format: row.format,
+      updatedAt: row.updatedAt,
+    };
+  });
+}
+
 async function buildPaperclipWakePayload(input: {
   db: Db;
   companyId: string;
   contextSnapshot: Record<string, unknown>;
+  inlineDocuments?: InlineIssueDocumentContext[];
   continuationSummary?:
     | {
         key: string;
@@ -1986,6 +2035,7 @@ async function buildPaperclipWakePayload(input: {
   const annotationCommentId = readNonEmptyString(input.contextSnapshot.annotationCommentId);
   const issueId = readNonEmptyString(input.contextSnapshot.issueId);
   const continuationSummary = input.continuationSummary ?? null;
+  const inlineDocuments = input.inlineDocuments ?? [];
   const issueSummary =
     input.issueSummary ??
     (issueId
@@ -2179,6 +2229,14 @@ async function buildPaperclipWakePayload(input: {
           updatedAt: continuationSummary.updatedAt.toISOString(),
         }
       : null,
+    documents: inlineDocuments.map((document) => ({
+      key: document.key,
+      title: document.title,
+      body: document.body,
+      bodyTruncated: document.bodyTruncated,
+      format: document.format,
+      updatedAt: document.updatedAt.toISOString(),
+    })),
     commentIds,
     latestCommentId: commentIds[commentIds.length - 1] ?? null,
     comments,
@@ -2229,6 +2287,7 @@ export function buildPaperclipTaskMarkdown(input: {
     kind?: string | null;
     status?: string | null;
   } | null;
+  inlineDocuments?: InlineIssueDocumentContext[];
 }) {
   const quoteTaskScalar = (value: string) => JSON.stringify(value);
   const fenceTaskText = (value: string) => {
@@ -2286,6 +2345,16 @@ export function buildPaperclipTaskMarkdown(input: {
   }
   if (wakeComment?.body.trim()) {
     lines.push("", "Latest wake comment:", fenceTaskText(wakeComment.body.trim()));
+  }
+  const inlineDocuments = input.inlineDocuments ?? [];
+  if (inlineDocuments.length > 0) {
+    lines.push("", "Issue documents and attachments:");
+    for (const document of inlineDocuments) {
+      lines.push(
+        `- Document ${quoteTaskScalar(document.key)}${document.title ? ` (${quoteTaskScalar(document.title)})` : ""}${document.bodyTruncated ? " [truncated]" : ""}:`,
+        fenceTaskText(document.body),
+      );
+    }
   }
   lines.push("", "Use this task context as the current assignment.");
   return lines.join("\n");
@@ -7117,6 +7186,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     const continuationSummary = issueRef
       ? await getIssueContinuationSummaryDocument(db, issueRef.id)
       : null;
+    const inlineDocuments = issueRef
+      ? await listInlineIssueDocuments(db, { companyId: agent.companyId, issueId: issueRef.id })
+      : [];
     if (continuationSummary) {
       context.paperclipContinuationSummary = {
         key: continuationSummary.key,
@@ -7131,6 +7203,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       db,
       companyId: agent.companyId,
       contextSnapshot: context,
+      inlineDocuments,
       continuationSummary,
       issueSummary: issueRef
         ? {
@@ -7163,6 +7236,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         kind: readNonEmptyString(context.interactionKind),
         status: readNonEmptyString(context.interactionStatus),
       },
+      inlineDocuments,
     });
     if (issueRef) {
       context.paperclipIssue = {

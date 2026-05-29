@@ -23,6 +23,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "activity.log.write",
     "agents.read",
     "webhooks.receive",
+    "issue.documents.read",
     "issue.documents.write",
   ],
   entrypoints: {

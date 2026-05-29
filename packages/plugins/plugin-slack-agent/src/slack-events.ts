@@ -61,6 +61,11 @@ function slackMessageBody(event: NonNullable<SlackEventBody["event"]>): string {
   return "[Slack message]";
 }
 
+function slackMessageDedupeId(event: NonNullable<SlackEventBody["event"]>): string | null {
+  if (!event.channel || !event.ts) return null;
+  return `slack-message:${event.channel}:${event.ts}`;
+}
+
 /** Truncates a Slack message to a reasonable issue title. */
 function firstMessageTitle(event: NonNullable<SlackEventBody["event"]>): string {
   const stripped = slackMessageBody(event).replace(/<[^>]+>/g, "").trim();
@@ -134,6 +139,9 @@ async function ingestSingleFile(
   }
 
   const key = toDocumentKey(file.name, file.id);
+  const existingDocument = await ctx.issues.documents.get(issueId, key, companyId);
+  if (existingDocument) return;
+
   const isTextLike =
     file.mimetype.startsWith("text/") ||
     (file.mimetype === "application/octet-stream" && file.name.endsWith(".md"));
@@ -375,9 +383,13 @@ export async function handleSlackEvent(
   const event = body?.event;
   if (!event) return;
 
-  await routeSlackEvent(ctx, agent, botToken, event);
+  const messageDedupeId = slackMessageDedupeId(event);
+  if (messageDedupeId && await hasEventBeenSeen(ctx, agent.agentId, messageDedupeId)) return;
+
+  const didProcess = await routeSlackEvent(ctx, agent, botToken, event);
 
   if (eventId) await markEventSeen(ctx, agent.agentId, eventId);
+  if (didProcess && messageDedupeId) await markEventSeen(ctx, agent.agentId, messageDedupeId);
 }
 
 /**
@@ -390,9 +402,9 @@ async function routeSlackEvent(
   agent: AgentEntry,
   botToken: string,
   event: NonNullable<SlackEventBody["event"]>,
-): Promise<void> {
+): Promise<boolean> {
   // Ignore messages from this agent's own bot user
-  if (event.user === agent.slackBotUserId || event.bot_id) return;
+  if (event.user === agent.slackBotUserId || event.bot_id) return false;
 
   const isDm = event.channel_type === "im" || event.type === "message.im";
 
@@ -407,7 +419,7 @@ async function routeSlackEvent(
     } else {
       await handleNewConversation(ctx, agent, botToken, event, key, event.channel, event.ts);
     }
-    return;
+    return true;
   }
 
   // Route: app_mention or a generic channel message containing the bot mention.
@@ -423,7 +435,7 @@ async function routeSlackEvent(
     } else {
       await handleNewConversation(ctx, agent, botToken, event, key, event.channel, threadTs);
     }
-    return;
+    return true;
   }
 
   // Route: untagged channel message in a tracked thread
@@ -433,6 +445,9 @@ async function routeSlackEvent(
     const existingIssueId = threadMap[key];
     if (existingIssueId) {
       await handleContinuation(ctx, agent, botToken, event, existingIssueId);
+      return true;
     }
   }
+
+  return false;
 }
