@@ -151,6 +151,26 @@ async function ingestSingleFile(
   await ctx.issues.documents.upsert({ issueId, key, body, companyId, title: file.name });
 }
 
+async function resolveSlackDisplayName(
+  ctx: PluginContext,
+  botToken: string,
+  userId: string,
+): Promise<string> {
+  try {
+    const url = `https://slack.com/api/users.info?user=${encodeURIComponent(userId)}`;
+    const res = await ctx.http.fetch(url, {
+      headers: { Authorization: `Bearer ${botToken}`, "Content-Type": "application/json" },
+    });
+    const data = await res.json() as { ok: boolean; user?: { real_name?: string; name?: string } };
+    if (data.ok && data.user) {
+      return data.user.real_name || data.user.name || userId;
+    }
+  } catch {
+    // fall through to userId
+  }
+  return userId;
+}
+
 async function ingestFileAttachments(
   ctx: PluginContext,
   botToken: string,
@@ -190,12 +210,26 @@ async function handleNewConversation(
     description: event.text ?? "",
     assigneeAgentId: agent.agentId,
     status: "todo",
+    workMode: "chat",
   });
 
   const [threadMap, channelMap] = await Promise.all([readThreadMap(ctx, agent.agentId), readChannelMap(ctx, agent.agentId)]);
   threadMap[mapKey] = issue.id;
   channelMap[issue.id] = { channelId, threadTs };
   await persistThreadMaps(ctx, agent.agentId, threadMap, channelMap);
+
+  const displayName = await resolveSlackDisplayName(ctx, botToken, event.user ?? "");
+  const slackTs = event.ts ? new Date(parseFloat(event.ts) * 1000).toISOString() : undefined;
+  await ctx.issues.createComment(issue.id, event.text ?? "", agent.companyId, {
+    authorType: "user",
+    presentation: {
+      kind: "message",
+      tone: "neutral",
+      title: displayName ? `Slack · ${displayName}` : "Slack",
+      detailsDefaultOpen: false,
+    },
+    createdAt: slackTs,
+  });
 
   if (event.files?.length) {
     await ingestFileAttachments(ctx, botToken, event.files, issue.id, agent.companyId);
@@ -216,7 +250,18 @@ async function handleContinuation(
   event: NonNullable<SlackEventBody["event"]>,
   issueId: string,
 ): Promise<void> {
-  await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId);
+  const displayName = await resolveSlackDisplayName(ctx, botToken, event.user ?? "");
+  const slackTs = event.ts ? new Date(parseFloat(event.ts) * 1000).toISOString() : undefined;
+  await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId, {
+    authorType: "user",
+    presentation: {
+      kind: "message",
+      tone: "neutral",
+      title: displayName ? `Slack · ${displayName}` : "Slack",
+      detailsDefaultOpen: false,
+    },
+    createdAt: slackTs,
+  });
 
   if (event.files?.length) {
     await ingestFileAttachments(ctx, botToken, event.files, issueId, agent.companyId);
