@@ -68,13 +68,17 @@ rl.on("line", (line) => {
       id: message.id,
       result: {
         ok: true,
-        supportedMethods: ["getData", "performAction"],
+        supportedMethods: ["getData", "performAction", "handleWebhook"],
       },
     });
     return;
   }
 
-  if (method === "getData" || method === "performAction") {
+  if (
+    method === "getData" ||
+    method === "performAction" ||
+    method === "handleWebhook"
+  ) {
     sendNestedHostRequest(message, message.paperclipInvocation?.id);
     return;
   }

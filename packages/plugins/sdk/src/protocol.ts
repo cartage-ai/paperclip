@@ -261,10 +261,14 @@ export type PluginRpcErrorCode =
 
 /**
  * Company scope attached by the host to one top-level plugin invocation.
- * Absence of this metadata means the invocation is instance/global scoped.
+ * A present `companyId` constrains worker→host calls to that company. Absence
+ * means the invocation is instance/global scoped — used for self-routing
+ * top-level handlers (webhooks, jobs, API requests) that resolve their own
+ * target company from the payload; the explicit `companyId` on each nested
+ * call governs instead.
  */
 export interface PluginInvocationScope {
-  companyId: string;
+  companyId?: string;
 }
 
 /**
