@@ -1,9 +1,9 @@
 {
-  "name": "@paperclipai/plugin-slack-agent",
-  "version": "0.1.0",
+  "name": "@cartage/paperclip-plugin-slack-agent",
+  "version": "0.1.12",
   "description": "Generic Slack-chat plugin — connect one or more Paperclip agents to Slack via @mention or DM",
   "type": "module",
-  "private": true,
+  "private": false,
   "exports": { ".": "./src/index.ts" },
   "publishConfig": {
     "access": "public",
@@ -31,7 +31,7 @@
     "typecheck": "pnpm --filter @paperclipai/plugin-sdk ensure-build-deps && tsc --noEmit"
   },
   "dependencies": {
-    "@paperclipai/plugin-sdk": "workspace:*",
+    "@paperclipai/plugin-sdk": "2026.525.0",
     "pdf-parse": "^1.1.1"
   },
   "devDependencies": {

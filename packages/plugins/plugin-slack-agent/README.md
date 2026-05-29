@@ -12,7 +12,7 @@ Install at runtime via the Paperclip plugins API (no redeploy needed):
 curl -X POST "$PAPERCLIP_URL/api/plugins/install" \
   -H "Authorization: Bearer $BOARD_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{ "packageName": "@cartage/paperclip-plugin-slack-agent", "version": "0.1.1" }'
+  -d '{ "packageName": "@cartage/paperclip-plugin-slack-agent", "version": "0.1.12" }'
 ```
 
 ## Configure

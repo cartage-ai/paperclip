@@ -450,7 +450,7 @@ describe("onWebhook — file attachments", () => {
     expect(key).toContain("f-ogre1");
   });
 
-  it("unsupported file type → skip comment logged, no document upserted", async () => {
+  it("image file → visible image attachment document and comment logged", async () => {
     const file: SlackFileFixture = {
       id: "F_IMG1",
       name: "screenshot.png",
@@ -458,7 +458,7 @@ describe("onWebhook — file attachments", () => {
       size: 4096,
       url_private_download: "https://files.slack.com/screenshot.png",
     };
-    const body = appMentionWithFiles([file], { event_id: "Ev_unsupported" });
+    const body = appMentionWithFiles([file], { event_id: "Ev_image" });
     const rawBody = JSON.stringify(body);
 
     harness.ctx.http = { fetch: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }) };
@@ -467,9 +467,14 @@ describe("onWebhook — file attachments", () => {
 
     await plugin.definition.onWebhook!(makeWebhookInput(rawBody, body));
 
-    expect(upsertSpy).not.toHaveBeenCalled();
-    const skipComment = commentSpy.mock.calls.find(([, b]) => b.includes("screenshot.png") && b.toLowerCase().includes("skip"));
-    expect(skipComment).toBeDefined();
+    expect(upsertSpy).toHaveBeenCalledOnce();
+    expect(upsertSpy.mock.calls[0]![0]).toMatchObject({
+      key: "slack-attachment-screenshot-png-f-img1",
+      title: "screenshot.png",
+      body: expect.stringContaining("Slack image attachment: screenshot.png"),
+    });
+    const imageComment = commentSpy.mock.calls.find(([, b]) => b.includes("Image attached") && b.includes("screenshot.png"));
+    expect(imageComment).toBeDefined();
   });
 
   it("oversized file → skip comment logged, no document upserted", async () => {
@@ -528,6 +533,36 @@ describe("onWebhook — file attachments", () => {
     expect(upsertSpy.mock.calls[0]![0].key).toContain("good-txt");
     const errComment = commentSpy.mock.calls.find(([, b]) => b.includes("fail.pdf"));
     expect(errComment).toBeDefined();
+  });
+
+  it("file-only message → creates a non-empty comment and wakeup fires", async () => {
+    const file: SlackFileFixture = {
+      id: "F_ONLY_IMAGE",
+      name: "diagram.png",
+      mimetype: "image/png",
+      size: 256,
+      url_private_download: "https://files.slack.com/diagram.png",
+    };
+    const body = appMentionWithFiles([file], {
+      event_id: "Ev_file_only",
+      event: {
+        type: "app_mention",
+        user: "U_HUMAN",
+        text: "",
+        ts: "1700000030.000100",
+        channel: "C_GENERAL",
+        channel_type: "channel",
+        files: [file],
+      },
+    });
+    const rawBody = JSON.stringify(body);
+
+    await plugin.definition.onWebhook!(makeWebhookInput(rawBody, body));
+
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
+    const issueId = Object.values(threadMap!)[0]!;
+    const comments = await harness.ctx.issues.listComments(issueId, COMPANY_ID);
+    expect(comments.some((comment) => comment.body === "[Slack message with 1 attachment]")).toBe(true);
   });
 
   it("file attachment with text message → wakeup fires and issue created", async () => {

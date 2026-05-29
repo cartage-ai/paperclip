@@ -148,6 +148,12 @@ describe("issue.comment.created — reply subscription", () => {
     expect(body.channel).toBe("C_GENERAL");
     expect(body.thread_ts).toBe("1700000001.000100");
     expect(body.text).toBe("Here's what's shipping: auth and notifications.");
+    expect(body.blocks).toEqual([
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: "Here's what's shipping: auth and notifications." },
+      },
+    ]);
   });
 
   it("does not post for comments authored by a human (actorType !== agent)", async () => {

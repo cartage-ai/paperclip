@@ -230,7 +230,7 @@ config, the same way the Linear plugin carries its API key.)
 
 ### Install plugin-slack-agent
 
-The plugin is published to npm as `@paperclipai/plugin-slack-agent`. Install it by package
+The plugin is published to npm as `@cartage/paperclip-plugin-slack-agent`. Install it by package
 name — the host resolves it from the registry at runtime (no Docker bake, no volume copy).
 
 ```bash
@@ -239,7 +239,7 @@ curl -X POST "$PAPERCLIP_URL/api/plugins/install" \
   -H "Authorization: Bearer $BOARD_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "packageName": "@paperclipai/plugin-slack-agent",
+    "packageName": "@cartage/paperclip-plugin-slack-agent",
     "version": "<published-version>"
   }'
 # Save the returned plugin id: PLUGIN_ID
@@ -249,7 +249,7 @@ The plugin source lives at `packages/plugins/plugin-slack-agent` in the repo. Fo
 development before a version is published, build it and install by absolute container path:
 
 ```bash
-npx pnpm --filter @paperclipai/plugin-slack-agent build
+npx pnpm --filter @cartage/paperclip-plugin-slack-agent build
 curl -X POST "$PAPERCLIP_URL/api/plugins/install" \
   -H "Authorization: Bearer $BOARD_TOKEN" \
   -H "Content-Type: application/json" \

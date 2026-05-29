@@ -9,6 +9,7 @@ import {
 import { WEBHOOK_KEYS, stateKey, type AgentEntry, type SlackAgentPluginConfig, type IssueChannelMap } from "./constants.js";
 import { verifySlackSignature } from "./slack-verify.js";
 import { handleSlackEvent } from "./slack-events.js";
+import { buildSlackMessagePayload } from "./slack-format.js";
 
 let currentContext: PluginContext | null = null;
 let currentConfig: SlackAgentPluginConfig | null = null;
@@ -74,6 +75,7 @@ async function postAgentReplyToSlack(ctx: PluginContext, agent: AgentEntry, even
   const comment = comments.find((c) => c.id === commentId);
   if (!comment) return;
 
+  const slackMessage = buildSlackMessagePayload(comment.body);
   await ctx.http.fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
@@ -83,7 +85,8 @@ async function postAgentReplyToSlack(ctx: PluginContext, agent: AgentEntry, even
     body: JSON.stringify({
       channel: entry.channelId,
       thread_ts: entry.threadTs,
-      text: comment.body,
+      text: slackMessage.text,
+      blocks: slackMessage.blocks,
     }),
   });
 }

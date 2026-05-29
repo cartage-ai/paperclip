@@ -31,6 +31,7 @@ type SlackEventBody = {
     channel_type?: string;
     thread_ts?: string;
     files?: SlackFile[];
+    subtype?: string;
   };
   team_id?: string;
 };
@@ -47,9 +48,17 @@ function dmKey(channelId: string): string {
   return `dm:${channelId}`;
 }
 
+function slackMessageBody(event: NonNullable<SlackEventBody["event"]>): string {
+  const text = (event.text ?? "").trim();
+  if (text.length > 0) return text;
+  const fileCount = event.files?.length ?? 0;
+  if (fileCount > 0) return `[Slack message with ${fileCount} attachment${fileCount === 1 ? "" : "s"}]`;
+  return "[Slack message]";
+}
+
 /** Truncates a Slack message to a reasonable issue title. */
-function firstMessageTitle(text: string): string {
-  const stripped = text.replace(/<[^>]+>/g, "").trim();
+function firstMessageTitle(event: NonNullable<SlackEventBody["event"]>): string {
+  const stripped = slackMessageBody(event).replace(/<[^>]+>/g, "").trim();
   const firstLine = stripped.split("\n")[0] ?? stripped;
   return firstLine.length > 120 ? firstLine.slice(0, 117) + "..." : firstLine || "Slack message";
 }
@@ -119,15 +128,38 @@ async function ingestSingleFile(
     return;
   }
 
-  const isSupportedType =
-    file.mimetype === "application/pdf" ||
+  const key = toDocumentKey(file.name, file.id);
+  const isTextLike =
     file.mimetype.startsWith("text/") ||
     (file.mimetype === "application/octet-stream" && file.name.endsWith(".md"));
+  const isPdf = file.mimetype === "application/pdf";
+  const isImage = file.mimetype.startsWith("image/");
 
-  if (!isSupportedType) {
+  if (isImage) {
+    await ctx.issues.documents.upsert({
+      issueId,
+      key,
+      companyId,
+      title: file.name,
+      body: [
+        `# Slack image attachment: ${file.name}`,
+        "",
+        `- Slack file ID: ${file.id}`,
+        `- MIME type: ${file.mimetype}`,
+        `- Size: ${file.size} bytes`,
+        file.url_private_download ? `- Slack private download URL: ${file.url_private_download}` : null,
+        "",
+        "This image was attached in Slack. If visual details are required and the agent cannot access the image content directly, ask the requester to describe the relevant parts or provide a text/PDF spec.",
+      ].filter(Boolean).join("\n"),
+    });
+    await ctx.issues.createComment(issueId, `[Slack attachment] Image attached: ${file.name} (${file.mimetype}).`, companyId);
+    return;
+  }
+
+  if (!isPdf && !isTextLike) {
     await ctx.issues.createComment(
       issueId,
-      `[Slack attachment] Skipped "${file.name}" — unsupported file type (${file.mimetype}).`,
+      `[Slack attachment] Unsupported attachment received: "${file.name}" (${file.mimetype}, ${(file.size / 1024).toFixed(1)} KB).`,
       companyId,
     );
     return;
@@ -139,7 +171,7 @@ async function ingestSingleFile(
   if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
 
   let body: string;
-  if (file.mimetype === "application/pdf") {
+  if (isPdf) {
     const buffer = Buffer.from(await res.arrayBuffer());
     const data = await pdfParse(buffer);
     body = data.text;
@@ -147,7 +179,6 @@ async function ingestSingleFile(
     body = await res.text();
   }
 
-  const key = toDocumentKey(file.name, file.id);
   await ctx.issues.documents.upsert({ issueId, key, body, companyId, title: file.name });
 }
 
@@ -206,8 +237,8 @@ async function handleNewConversation(
 ): Promise<void> {
   const issue = await ctx.issues.create({
     companyId: agent.companyId,
-    title: firstMessageTitle(event.text ?? ""),
-    description: event.text ?? "",
+    title: firstMessageTitle(event),
+    description: slackMessageBody(event),
     assigneeAgentId: agent.agentId,
     status: "todo",
     workMode: "chat",
@@ -220,7 +251,7 @@ async function handleNewConversation(
 
   const displayName = await resolveSlackDisplayName(ctx, botToken, event.user ?? "");
   const slackTs = event.ts ? new Date(parseFloat(event.ts) * 1000).toISOString() : undefined;
-  await ctx.issues.createComment(issue.id, event.text ?? "", agent.companyId, {
+  await ctx.issues.createComment(issue.id, slackMessageBody(event), agent.companyId, {
     authorType: "user",
     presentation: {
       kind: "message",
@@ -269,7 +300,7 @@ async function handleContinuation(
 
   const displayName = await resolveSlackDisplayName(ctx, botToken, event.user ?? "");
   const slackTs = event.ts ? new Date(parseFloat(event.ts) * 1000).toISOString() : undefined;
-  await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId, {
+  await ctx.issues.createComment(issueId, slackMessageBody(event), agent.companyId, {
     authorType: "user",
     presentation: {
       kind: "message",
