@@ -118,6 +118,7 @@ import {
 } from "../lib/system-notice-comment";
 import type {
   IssueCommentMetadata,
+  IssueCommentMetadataDocumentLinkRow,
   IssueCommentPresentation,
 } from "@paperclipai/shared";
 import {
@@ -1261,6 +1262,26 @@ const IssueChatAssistantParts = memo(function IssueChatAssistantParts({
   );
 });
 
+function IssueChatDocumentLinkChips({ custom }: { custom: Record<string, unknown> }) {
+  const commentMetadata = isIssueCommentMetadata(custom.commentMetadata) ? custom.commentMetadata : null;
+  const docLinks = (commentMetadata?.sections ?? [])
+    .flatMap((section) => section.rows)
+    .filter((row): row is IssueCommentMetadataDocumentLinkRow => row.type === "document_link");
+  if (docLinks.length === 0) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {docLinks.map((row) => (
+        <span
+          key={row.documentKey}
+          className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs text-muted-foreground"
+        >
+          &#128206; {row.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function IssueChatUserMessage({
   message,
   isInterruptingQueuedRun,
@@ -1351,6 +1372,7 @@ function IssueChatUserMessage({
         ) : null}
         <div className="min-w-0 max-w-full space-y-3">
           <IssueChatTextParts message={message} />
+          <IssueChatDocumentLinkChips custom={custom} />
         </div>
       </div>
 

@@ -167,6 +167,7 @@ export const ISSUE_COMMENT_METADATA_ROW_TYPES = [
   "issue_link",
   "agent_link",
   "run_link",
+  "document_link",
 ] as const;
 export type IssueCommentMetadataRowType = (typeof ISSUE_COMMENT_METADATA_ROW_TYPES)[number];
 

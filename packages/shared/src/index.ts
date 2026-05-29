@@ -457,6 +457,7 @@ export type {
   IssueCommentMetadataIssueLinkRow,
   IssueCommentMetadataAgentLinkRow,
   IssueCommentMetadataRunLinkRow,
+  IssueCommentMetadataDocumentLinkRow,
   IssueCommentPresentation,
   IssueThreadInteractionActorFields,
   SuggestedTaskDraft,

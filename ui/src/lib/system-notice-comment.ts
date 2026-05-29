@@ -67,6 +67,8 @@ function mapMetadataRow(
         status: row.title ?? undefined,
       };
     }
+    case "document_link":
+      return { kind: "text", label: metadataRowText(row, "Attachment"), value: row.label };
     default:
       return null;
   }
