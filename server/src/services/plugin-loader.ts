@@ -27,6 +27,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -972,8 +973,9 @@ export function pluginLoader(
     try {
       // Dynamic import works for both .js (ESM) and .cjs (CJS) manifests
       const manifestUrl = pathToFileURL(manifestPath);
-      const manifestStat = await stat(manifestPath);
-      manifestUrl.searchParams.set("mtime", String(Math.trunc(manifestStat.mtimeMs)));
+      const manifestBytes = await readFile(manifestPath);
+      const manifestHash = createHash("sha256").update(manifestBytes).digest("hex");
+      manifestUrl.searchParams.set("contentHash", manifestHash);
       const mod = await import(manifestUrl.href) as Record<string, unknown>;
       // The manifest may be the default export or the module itself
       raw = mod["default"] ?? mod;

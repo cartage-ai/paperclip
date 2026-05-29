@@ -584,4 +584,37 @@ describe("onWebhook — file attachments", () => {
     expect(threadMap).not.toBeNull();
     expect(Object.keys(threadMap!)).toHaveLength(1);
   });
+
+  it("creates an issue for a file_share channel message that mentions the bot", async () => {
+    const file: SlackFileFixture = {
+      id: "F_SHARE1",
+      name: "OGRE_API_Integration_Guide (1) (1).pdf",
+      mimetype: "application/pdf",
+      size: 4096,
+      url_private_download: "https://files.slack.com/files-pri/ogre.pdf",
+    };
+    const body = {
+      type: "event_callback",
+      event_id: "Ev_file_share_mention",
+      event: {
+        type: "message",
+        subtype: "file_share",
+        user: "U_HUMAN",
+        text: "Hey <@U_BOT> do you see this file?",
+        ts: "1700000040.000100",
+        channel: "C_GENERAL",
+        channel_type: "channel",
+        files: [file],
+      },
+      team_id: "T_TEAM",
+    };
+
+    harness.ctx.http = { fetch: makeFileFetch({ "ogre.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]) }) };
+
+    await plugin.definition.onWebhook!(makeWebhookInput(JSON.stringify(body), body));
+
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
+    expect(threadMap).not.toBeNull();
+    expect(Object.keys(threadMap!)).toHaveLength(1);
+  });
 });

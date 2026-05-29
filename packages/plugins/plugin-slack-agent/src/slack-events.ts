@@ -48,6 +48,11 @@ function dmKey(channelId: string): string {
   return `dm:${channelId}`;
 }
 
+function messageMentionsBot(event: NonNullable<SlackEventBody["event"]>, botUserId: string): boolean {
+  const text = event.text ?? "";
+  return text.includes(`<@${botUserId}>`) || text.includes(`<@${botUserId}|`);
+}
+
 function slackMessageBody(event: NonNullable<SlackEventBody["event"]>): string {
   const text = (event.text ?? "").trim();
   if (text.length > 0) return text;
@@ -405,8 +410,9 @@ async function routeSlackEvent(
     return;
   }
 
-  // Route: app_mention — create new or continue thread
-  if (event.type === "app_mention") {
+  // Route: app_mention or a generic channel message containing the bot mention.
+  // Slack can deliver file_share messages with mentions as `message`, not `app_mention`.
+  if (event.type === "app_mention" || messageMentionsBot(event, agent.slackBotUserId)) {
     const threadMap = await readThreadMap(ctx, agent.agentId);
     const threadTs = event.thread_ts ?? event.ts;
     const key = channelKey(event.channel, threadTs);
