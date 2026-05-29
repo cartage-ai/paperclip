@@ -55,6 +55,27 @@ describe("buildPaperclipTaskMarkdown", () => {
     expect(acceptedConfirmation).not.toContain("Make the plan only.");
   });
 
+  it("adds chat directives that keep conversation issues open", () => {
+    const context = buildPaperclipTaskMarkdown({
+      issue: {
+        id: "issue-1",
+        identifier: "CAR-5",
+        title: "Slack thread with Stan",
+        workMode: "chat",
+        description: null,
+      },
+      wakeComment: {
+        id: "comment-1",
+        body: "Would love to plan a migration with you",
+      },
+    });
+
+    expect(context).toContain("- Work mode: \"chat\"");
+    expect(context).toContain("Treat this issue as a persistent conversation thread");
+    expect(context).toContain("Do not mark the issue done merely because you responded");
+    expect(context).toContain("Produce durable artifacts such as an issue document or child issues");
+  });
+
   it("prefers ordinary comment planning guidance over stale accepted confirmation state", () => {
     const commentWake = buildPaperclipTaskMarkdown({
       issue: {

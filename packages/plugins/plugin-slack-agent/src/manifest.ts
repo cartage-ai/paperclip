@@ -10,6 +10,7 @@ const manifest: PaperclipPluginManifestV1 = {
   author: "Paperclip",
   categories: ["automation", "connector"],
   capabilities: [
+    "issues.read",
     "issues.create",
     "issues.update",
     "issues.wakeup",

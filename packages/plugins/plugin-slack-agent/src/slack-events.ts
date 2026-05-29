@@ -243,6 +243,21 @@ async function handleNewConversation(
 // Continuation path
 // ---------------------------------------------------------------------------
 
+async function ensureChatContinuationIsWakeable(
+  ctx: PluginContext,
+  agent: AgentEntry,
+  issueId: string,
+): Promise<void> {
+  const issue = await ctx.issues.get(issueId, agent.companyId);
+  if (!issue) throw new Error(`Tracked Slack issue not found: ${issueId}`);
+
+  if (issue.status === "done" && issue.workMode === "chat") {
+    await ctx.issues.update(issueId, { status: "todo" }, agent.companyId, {
+      actorAgentId: agent.agentId,
+    });
+  }
+}
+
 async function handleContinuation(
   ctx: PluginContext,
   agent: AgentEntry,
@@ -250,6 +265,8 @@ async function handleContinuation(
   event: NonNullable<SlackEventBody["event"]>,
   issueId: string,
 ): Promise<void> {
+  await ensureChatContinuationIsWakeable(ctx, agent, issueId);
+
   const displayName = await resolveSlackDisplayName(ctx, botToken, event.user ?? "");
   const slackTs = event.ts ? new Date(parseFloat(event.ts) * 1000).toISOString() : undefined;
   await ctx.issues.createComment(issueId, event.text ?? "", agent.companyId, {

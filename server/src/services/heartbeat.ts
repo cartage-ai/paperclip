@@ -2271,6 +2271,14 @@ export function buildPaperclipTaskMarkdown(input: {
         directive,
       );
     }
+    if (issue.workMode === "chat") {
+      lines.push(
+        `- Work mode: ${quoteTaskScalar("chat")}`,
+        "",
+        "Chat mode directive:",
+        "Treat this issue as a persistent conversation thread. Reply to the latest user message and keep the issue open when you are waiting for the user's next message. Do not mark the issue done merely because you responded. Produce durable artifacts such as an issue document or child issues when the conversation reaches a concrete plan or handoff; only a board/user should close the chat thread.",
+      );
+    }
     const description = issue.description?.trim();
     if (description) {
       lines.push("", "Issue description:", fenceTaskText(description));

@@ -234,6 +234,41 @@ describe("onWebhook — slack-events", () => {
     expect(comments.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("reopens a done chat issue before waking the agent for a Slack continuation", async () => {
+    const firstBody = appMentionBody({ event_id: "Ev_done_first" });
+    await plugin.definition.onWebhook!(makeWebhookInput(JSON.stringify(firstBody), firstBody));
+
+    const threadMap = harness.getState({ scopeKind: "instance", stateKey: stateKey.threadIssueMap(STAN_AGENT_ID) }) as Record<string, string> | null;
+    const issueId = Object.values(threadMap!)[0]!;
+    await harness.ctx.issues.update(issueId, { status: "done" }, COMPANY_ID);
+
+    const continuationBody = {
+      type: "event_callback",
+      event_id: "Ev_done_reply",
+      event: {
+        type: "app_mention",
+        user: "U_HUMAN",
+        text: "Would love to plan a migration with you",
+        ts: "1700000002.000200",
+        channel: "C_GENERAL",
+        channel_type: "channel",
+        thread_ts: "1700000001.000100",
+      },
+      team_id: "T_TEAM",
+    };
+    const continuationRaw = JSON.stringify(continuationBody);
+
+    await plugin.definition.onWebhook!(makeWebhookInput(continuationRaw, continuationBody));
+    await plugin.definition.onWebhook!(makeWebhookInput(continuationRaw, continuationBody));
+
+    const issue = await harness.ctx.issues.get(issueId, COMPANY_ID);
+    expect(issue?.status).toBe("todo");
+
+    const comments = await harness.ctx.issues.listComments(issueId, COMPANY_ID);
+    const continuationComments = comments.filter((comment) => comment.body === "Would love to plan a migration with you");
+    expect(continuationComments).toHaveLength(1);
+  });
+
   it("creates an issue + wakeup on a DM", async () => {
     const dmBody = {
       type: "event_callback",

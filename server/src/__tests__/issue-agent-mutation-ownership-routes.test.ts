@@ -722,6 +722,33 @@ describe("agent issue mutation checkout ownership", () => {
     expect(mockIssueService.addComment).not.toHaveBeenCalled();
   });
 
+  it("rejects agent attempts to mark chat-mode issues done", async () => {
+    mockIssueService.getById.mockResolvedValue(makeIssue({ workMode: "chat", assigneeAgentId: ownerAgentId }));
+
+    const res = await request(await createApp(ownerActor()))
+      .patch(`/api/issues/${issueId}`)
+      .send({ status: "done", comment: "Done. Responded and waiting for their next message." });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(422);
+    expect(res.body.error).toContain("cannot mark chat-mode issues done");
+    expect(mockIssueService.update).not.toHaveBeenCalled();
+  });
+
+  it("allows board users to close chat-mode issues", async () => {
+    mockIssueService.getById.mockResolvedValue(makeIssue({ workMode: "chat", assigneeAgentId: ownerAgentId }));
+    mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({
+      ...makeIssue({ workMode: "chat", assigneeAgentId: ownerAgentId }),
+      ...patch,
+    }));
+
+    const res = await request(await createApp(boardActor()))
+      .patch(`/api/issues/${issueId}`)
+      .send({ status: "done" });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(mockIssueService.update).toHaveBeenCalled();
+  });
+
   it("allows same-company agent mutations on unassigned in-progress issues", async () => {
     mockIssueService.getById.mockResolvedValue(makeIssue({ assigneeAgentId: null }));
     mockIssueService.update.mockImplementation(async (_id: string, patch: Record<string, unknown>) => ({

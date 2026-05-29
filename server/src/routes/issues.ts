@@ -477,6 +477,11 @@ const INVALID_AGENT_IN_REVIEW_DISPOSITION_MESSAGE =
   "link or request a pending approval, assign a human reviewer with assigneeUserId, set a typed executionState.currentParticipant through an execution policy, " +
   "or schedule an issue monitor for an external review/check. After creating one of those review paths, retry the status update.";
 
+const INVALID_AGENT_CHAT_DONE_DISPOSITION_MESSAGE =
+  "invalid_issue_disposition: Agent-authored updates cannot mark chat-mode issues done. " +
+  "Chat issues are persistent conversation threads; reply to the user and leave the issue open while waiting for the next message. " +
+  "When the conversation produces a durable plan or handoff, write it as an issue document or create child issues, then ask the board/user to close the chat thread.";
+
 function executionPrincipalsEqual(
   left: ParsedExecutionState["currentParticipant"] | null,
   right: ParsedExecutionState["currentParticipant"] | null,
@@ -1185,6 +1190,36 @@ export function issueRoutes(
       environmentId,
       { allowedDrivers: ["local", "ssh", "sandbox"] },
     );
+  }
+
+  function assertAgentChatIssueNotClosedByAgent(input: {
+    existing: {
+      status: string;
+      workMode?: string | null;
+    };
+    updateFields: Record<string, unknown>;
+    actorType: string;
+  }) {
+    const nextStatus = typeof input.updateFields.status === "string"
+      ? input.updateFields.status
+      : input.existing.status;
+    if (
+      input.actorType === "agent" &&
+      input.existing.workMode === "chat" &&
+      input.existing.status !== "done" &&
+      nextStatus === "done"
+    ) {
+      throw unprocessable(INVALID_AGENT_CHAT_DONE_DISPOSITION_MESSAGE, {
+        code: "invalid_issue_disposition",
+        missing: "open_chat_continuation",
+        validNextSteps: [
+          "leave_chat_issue_open",
+          "write_issue_document",
+          "create_child_issues",
+          "ask_board_or_user_to_close_thread",
+        ],
+      });
+    }
   }
 
   async function assertAgentInReviewReviewPath(input: {
@@ -3981,6 +4016,12 @@ export function issueRoutes(
         };
       }
     }
+
+    assertAgentChatIssueNotClosedByAgent({
+      existing,
+      updateFields,
+      actorType: req.actor.type,
+    });
 
     await assertAgentInReviewReviewPath({
       existing,
